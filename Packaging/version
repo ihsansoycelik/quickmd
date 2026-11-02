@@ -1,0 +1,4 @@
+# The one place the app version lives. build-app.sh --appstore bumps
+# BUILD_NUMBER and commits it, so every upload gets a new one.
+MARKETING_VERSION=1.0.0
+BUILD_NUMBER=1

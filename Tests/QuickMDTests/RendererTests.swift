@@ -1,0 +1,190 @@
+import Foundation
+import Testing
+@testable import QuickMD
+
+/// The preview/export renderer: crashes, sanitising, task numbering,
+/// block edge cases and the inputs that used to take seconds.
+struct RendererTests {
+    func html(_ markdown: String, interactive: Bool = false) -> String {
+        MarkdownHTML.render(markdown, interactive: interactive)
+    }
+
+    // MARK: Placeholder characters
+
+    @Test func privateUseSentinelDoesNotCrash() {
+        #expect(html("a \u{E000}0\u{E001} b").contains("&#xe000;0&#xe001;"))
+    }
+
+    @Test func loneSentinelTerminates() {
+        #expect(html("x \u{E000} y").contains("&#xe000;"))
+        #expect(html("`\u{E000}0\u{E001}`").contains("<code>&#xe000;0&#xe001;</code>"))
+        #expect(!html("a\u{E002}b").contains("<br>"))
+    }
+
+    // MARK: Math
+
+    @Test func latexDelimitersBecomeMath() {
+        #expect(html(#"inline \(a^2\) here"#).contains(#"<span class="math">a^2</span>"#))
+        #expect(html("\\[\n\\frac{1}{2}\n\\]").contains(#"<div class="math math-display">\frac{1}{2}</div>"#))
+        #expect(html("so $$a\nb$$ in text").contains(#"<span class="math math-display">a"#))
+    }
+
+    @Test func escapedBracketsStayText() {
+        #expect(html(#"a \[draft\] b"#).contains("<p>a [draft] b</p>"))
+        #expect(html("\\[draft] text\nmore").contains("<p>[draft] text\nmore</p>"))
+    }
+
+    // MARK: Sanitising
+
+    @Test func fileAndEntityHiddenSchemesAreBlocked() {
+        let out = html("[a](file:///etc/passwd) [b](jav&#x61;script:1) <a href=\"FILE:///x\">c</a>")
+        #expect(!out.lowercased().contains("file:"))
+        #expect(!out.contains("script:"))
+    }
+
+    @Test func characterReferencesSurvive() {
+        #expect(html("AT&amp;T &copy; &#233;").contains("AT&amp;T &copy; &#233;"))
+        #expect(html("`&amp;`").contains("<code>&amp;amp;</code>"))
+        #expect(html("&nope and & alone").contains("&amp;nope and &amp; alone"))
+    }
+
+    @Test func controlCharactersAreDropped() {
+        #expect(html("nul:\u{0}:end\u{7}").contains("nul::end"))
+    }
+
+    @Test func scriptsAndHandlersAreRemoved() {
+        let out = html("<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n<img/onerror=alert(1) src=y>\n\nok")
+        #expect(!out.lowercased().contains("<script"))
+        #expect(!out.contains("onerror"))
+        #expect(out.contains("<img src=x >"))
+        #expect(out.contains("<p>ok</p>"))
+    }
+
+    @Test func quotedAngleBracketCannotSmuggleAHandler() {
+        let out = html("hi <img alt=\">\" onerror=alert(1)> there")
+        #expect(!out.contains("<img alt=\">\" onerror"))
+        #expect(!html("<div title='a\"' onclick=x>t</div>").contains("onclick"))
+    }
+
+    @Test func scriptURLsAreNeutralised() {
+        #expect(html("[x](javascript:alert(1))").contains("href=\"#\""))
+        #expect(html("<a href=\"jav&#x61;script:alert(1)\">x</a>").contains("href=\"#\""))
+        #expect(html("<a href=' javascript:x'>x</a>").contains("href=\"#\""))
+        #expect(html("![p](data:image/png;base64,AAAA)").contains("src=\"data:image/png"))
+        #expect(html("<iframe src=\"file:///etc/hosts\"></iframe>") .contains("iframe") == false)
+    }
+
+    @Test func pageForbidsInlineScript() {
+        let page = MarkdownHTML.page(body: "", title: "t", theme: .light, fontFamily: "x", fontSize: 16, baseURL: nil)
+        #expect(page.contains("Content-Security-Policy"))
+        #expect(page.contains("script-src 'nonce-"))
+        #expect(page.contains("connect-src 'none'"))
+    }
+
+    // MARK: Tasks carry their source line
+
+    func taskLines(_ markdown: String) -> [Int] {
+        let out = html(markdown, interactive: true)
+        return out.matches(of: /data-task="(\d+)"/).map { Int($0.1)! }
+    }
+
+    @Test func tasksSkipCodeAndHTML() {
+        #expect(taskLines("Code\n\n    - [ ] example\n\n- [ ] real task") == [4])
+        #expect(taskLines("<div>\n- [ ] inside\n</div>\n\n- [ ] real") == [4])
+        #expect(taskLines("> ```\n> - [ ] in code\n> ```\n- [ ] real") == [3])
+    }
+
+    @Test func tasksWithoutTrailingSpace() {
+        #expect(taskLines("- [x]\n- [ ] real\n- [X]\tdone") == [0, 1, 2])
+        #expect(html("- [x]").contains("checked"))
+    }
+
+    @Test func nestedAndQuotedTasksKeepTheirLine() {
+        #expect(taskLines("---\ntitle: x\n---\n\n- a\n  - [ ] nested\n\n> - [x] quoted") == [5, 7])
+    }
+
+    // MARK: Blocks
+
+    @Test func pipeTextOverDashesIsAHeadingNotATable() {
+        let out = html("a | b\n---")
+        #expect(!out.contains("<table>"))
+        #expect(out.contains("<h2 id=\"a-b\">a | b</h2>"))
+        #expect(!html("| a | b |\n| --- |").contains("<table>"))
+        #expect(html("| a | b |\n| --- | --- |\n| 1 | 2 |").contains("<td>2</td>"))
+    }
+
+    @Test func fenceClosesOnlyOnAMatchingFence() {
+        let out = html("````markdown\n```swift\nlet x = 1\n```\n````\n\nafter")
+        #expect(out.components(separatedBy: "<pre>").count == 2)
+        let text = out.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        #expect(text.contains("```swift\nlet x = 1\n```"))
+        #expect(out.contains("class=\"language-markdown\""))
+        #expect(out.contains("<p>after</p>"))
+        #expect(html("```\n```swift\nx\n```").components(separatedBy: "<pre>").count == 2)
+    }
+
+    @Test func frontMatterIsNotRendered() {
+        let out = html("---\ntitle: Post\ndate: 2026-01-01\n---\n\n# Post")
+        #expect(!out.contains("<hr>"))
+        #expect(!out.contains("title:"))
+        #expect(out.contains("<h1"))
+        // A rule at the top without key: lines is still a rule.
+        #expect(html("---\n\ntext").contains("<hr>"))
+    }
+
+    @Test func headingIDsAreUnique() {
+        let ids = html("# a\n# a-1\n# a").matches(of: /id="([^"]+)"/).map { String($0.1) }
+        #expect(ids == ["a", "a-1", "a-2"])
+    }
+
+    @Test func atxClosingHashesNeedASpace() {
+        #expect(html("# C#").contains(">C#</h1>"))
+        #expect(html("## Title ##").contains(">Title</h2>"))
+    }
+
+    // MARK: Inline
+
+    @Test func boldItalicNestsCorrectly() {
+        #expect(html("***x***").contains("<em><strong>x</strong></em>"))
+    }
+
+    @Test func linkDestinationsKeepBalancedParentheses() {
+        let out = html("[wiki](https://en.wikipedia.org/wiki/Foo_(bar)) next")
+        #expect(out.contains("href=\"https://en.wikipedia.org/wiki/Foo_(bar)\""))
+        #expect(out.contains("</a> next"))
+        #expect(html("[a](b \"T\")").contains("title=\"T\""))
+        #expect(html("![alt](i.png)").contains("<img src=\"i.png\" alt=\"alt\">"))
+    }
+
+    @Test func hardBreaks() {
+        #expect(html("one  \ntwo").contains("one<br>\ntwo"))
+        #expect(html("one\\\ntwo").contains("one<br>\ntwo"))
+        #expect(!html("one\ntwo").contains("<br>"))
+    }
+
+    @Test func codeSpans() {
+        #expect(html("a `b` c").contains("<code>b</code>"))
+        #expect(html("``a ` b``").contains("<code>a ` b</code>"))
+        #expect(html("`unclosed").contains("`unclosed"))
+    }
+
+    // MARK: Speed
+
+    func time(_ body: () -> Void) -> Double {
+        let start = Date()
+        body()
+        return Date().timeIntervalSince(start)
+    }
+
+    @Test func pathologicalLinesStayFast() {
+        #expect(time { _ = html(String(repeating: "`", count: 20_000)) } < 1)
+        #expect(time { _ = html(String(repeating: "[", count: 20_000)) } < 1)
+        #expect(time { _ = html(String(repeating: "[a](", count: 5_000)) } < 1)
+    }
+
+    @Test func largeNoteRendersQuickly() {
+        let block = "# Heading\n\nSome *text* with `code` and a [link](https://x.io).\n\n- item\n- [ ] task\n\n> quote\n\n"
+        let note = String(repeating: block, count: 1_000)  // ~11,000 lines
+        #expect(time { _ = html(note) } < 3)
+    }
+}

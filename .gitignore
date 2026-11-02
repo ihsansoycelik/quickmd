@@ -1,0 +1,33 @@
+# Swift / SwiftPM
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Build artifacts
+build/
+dist/
+*.app
+
+# Universal build slices
+.build-universal/
+
+# Local agent/tool state
+.claude/
+WATCHDOG.yml
