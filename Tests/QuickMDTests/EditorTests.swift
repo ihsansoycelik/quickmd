@@ -279,3 +279,39 @@ struct TableGridTests {
         #expect(lm.renderedTable(at: table.location) == nil)
     }
 }
+
+@MainActor
+struct ReadingLookTests {
+    func storage(_ text: String) -> NSTextStorage {
+        let controller = EditorViewController()
+        _ = controller.view
+        controller.load(text)
+        objc_setAssociatedObject(controller.textView, &EditorTests.key, controller, .OBJC_ASSOCIATION_RETAIN)
+        return controller.textView.textStorage!
+    }
+
+    @Test func imageOnlyLineIsTagged() {
+        let s = storage("a\n\n![alt](pics/x.png)\n\ntext ![i](y.png) inline\n")
+        let ns = s.string as NSString
+        #expect(s.attribute(.qmImage, at: ns.range(of: "![alt]").location, effectiveRange: nil) as? String == "pics/x.png")
+        #expect(s.attribute(.qmImage, at: ns.range(of: "![i]").location, effectiveRange: nil) == nil)
+    }
+
+    @Test func taskBulletFoldsAndFrontMatterKeysStay() {
+        let s = storage("---\ntitle: X\n---\n\n- [ ] todo\n- plain\n")
+        let ns = s.string as NSString
+        #expect(s.attribute(.qmTaskBullet, at: ns.range(of: "- [ ]").location, effectiveRange: nil) != nil)
+        #expect(s.attribute(.qmTaskBullet, at: ns.range(of: "- plain").location, effectiveRange: nil) == nil)
+        #expect(s.attribute(.qmSyntax, at: ns.range(of: "title").location, effectiveRange: nil) == nil)
+    }
+
+    @Test func footnoteReferenceHidesItsBrackets() {
+        let s = storage("Text.[^1]\n\n[^1]: Note.\n")
+        let ns = s.string as NSString
+        let ref = ns.range(of: "[^1]")
+        #expect(s.attribute(.qmSyntax, at: ref.location, effectiveRange: nil) != nil)
+        #expect(s.attribute(.qmSyntax, at: ref.location + 2, effectiveRange: nil) == nil)
+        let def = ns.range(of: "[^1]:")
+        #expect(s.attribute(.qmSyntax, at: def.location, effectiveRange: nil) == nil)
+    }
+}

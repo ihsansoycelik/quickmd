@@ -36,6 +36,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView = MarkdownTextView(frame: .zero, textContainer: container)
         super.init(nibName: nil, bundle: nil)
         layoutManager.delegate = self
+        layoutManager.imageForLine = { [weak self] line, target in
+            guard let self, self.isReading, NSIntersectionRange(self.activeLine, line).length == 0 else { return nil }
+            return self.localImage(target)
+        }
         layoutManager.tableIsRendered = { [weak self] block in
             guard let self, self.isReading else { return false }
             return self.activeTable.map { NSIntersectionRange($0, block).length == 0 } ?? true
@@ -292,6 +296,32 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// The line the caret is in: its tokens stay visible in reading mode.
     private var activeLine = NSRange(location: 0, length: 0)
 
+    /// Local pictures by resolved path; nil when a file didn't load.
+    private var imageCache: [String: NSImage?] = [:]
+
+    /// A local image: an absolute path, `file:` URL or path relative to
+    /// the note. Remote images stay links (nothing is fetched).
+    private func localImage(_ target: String) -> NSImage? {
+        let decoded = target.removingPercentEncoding ?? target
+        let url: URL
+        if decoded.hasPrefix("file://"), let u = URL(string: target) {
+            url = u
+        } else if decoded.hasPrefix("/") {
+            url = URL(fileURLWithPath: decoded)
+        } else if decoded.hasPrefix("~/") {
+            url = URL(fileURLWithPath: (decoded as NSString).expandingTildeInPath)
+        } else if !decoded.contains("://"), let base = textView.baseURL {
+            url = base.appendingPathComponent(decoded)
+        } else {
+            return nil
+        }
+        let key = url.standardizedFileURL.path
+        if let cached = imageCache[key] { return cached }
+        let image = NSImage(contentsOf: url)
+        imageCache[key] = image
+        return image
+    }
+
     /// The table the caret is in: shown as source, not as a grid.
     private var activeTable: NSRange?
 
@@ -343,6 +373,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             baselineOffset.pointee = 0
             return true
         }
+        if let grids = layoutManager as? HorizontalRuleLayoutManager, let (_, image) = grids.renderedImage(at: at) {
+            let size = HorizontalRuleLayoutManager.imageSize(image, available: grids.gridWidth(forFragmentWidth: lineFragmentRect.pointee.width))
+            let height = size.height + 2 * HorizontalRuleLayoutManager.imageMargin
+            lineFragmentRect.pointee.size.height = height
+            lineFragmentUsedRect.pointee.size.height = height
+            baselineOffset.pointee = 0
+            return true
+        }
         guard at < storage.length, !NSLocationInRange(at, activeLine) else { return false }
         if storage.attribute(.qmTableDelimiter, at: at, effectiveRange: nil) != nil {
             lineFragmentRect.pointee.size.height = 1
@@ -383,6 +421,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         for i in 0..<glyphRange.length {
             out[i] = props[i]
             let at = charIndexes[i]
+            // An image line drawn as its picture hides its source text.
+            if let grids, storage.attribute(.qmImage, at: at, effectiveRange: nil) != nil, grids.renderedImage(at: at) != nil {
+                if !props[i].contains(.controlCharacter) { out[i] = .null; changed = true }
+                continue
+            }
             // A table drawn as a grid hides its source text.
             if let grids, at != notTable, storage.attribute(.qmTable, at: at, effectiveRange: nil) != nil {
                 if table.map({ !NSLocationInRange(at, $0) }) ?? true { table = grids.renderedTable(at: at) }
@@ -391,6 +434,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
                     continue
                 }
                 notTable = at
+            }
+            if !NSLocationInRange(at, activeLine), storage.attribute(.qmTaskBullet, at: at, effectiveRange: nil) != nil {
+                out[i] = .controlCharacter
+                changed = true
+                continue
             }
             if !NSLocationInRange(at, activeLine), storage.attribute(.qmSyntax, at: at, effectiveRange: nil) != nil {
                 out[i] = .null
@@ -407,6 +455,15 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             layoutManager.setGlyphs($0.baseAddress!, properties: props.baseAddress!, characterIndexes: charIndexes, font: aFont, forGlyphRange: glyphRange)
         } }
         return glyphRange.length
+    }
+
+    func layoutManager(
+        _ layoutManager: NSLayoutManager, shouldUse action: NSLayoutManager.ControlCharacterAction,
+        forControlCharacterAt charIndex: Int
+    ) -> NSLayoutManager.ControlCharacterAction {
+        guard let storage = layoutManager.textStorage, charIndex < storage.length,
+              storage.attribute(.qmTaskBullet, at: charIndex, effectiveRange: nil) != nil else { return action }
+        return .zeroAdvancement
     }
 
     /// Fence starts kept between keystrokes, so a large note's blocks

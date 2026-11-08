@@ -62,6 +62,33 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
         return grid
     }
 
+    // MARK: Inline images
+
+    /// The picture for an image line's target, when it's drawn (reading
+    /// mode, caret elsewhere, a local file that loads). Set by the editor.
+    var imageForLine: ((NSRange, String) -> NSImage?)?
+    static let imageMargin: CGFloat = 6
+    static let imageMaxHeight: CGFloat = 520
+
+    /// The image line around `location` and its picture, when drawn.
+    func renderedImage(at location: Int) -> (NSRange, NSImage)? {
+        guard let storage = textStorage, let imageForLine, location < storage.length else { return nil }
+        var line = NSRange()
+        guard let target = storage.attribute(.qmImage, at: location, longestEffectiveRange: &line,
+                                             in: NSRange(location: 0, length: storage.length)) as? String,
+              let image = imageForLine(line, target) else { return nil }
+        return (line, image)
+    }
+
+    /// The size an image is drawn at in `available` points.
+    static func imageSize(_ image: NSImage, available: CGFloat) -> CGSize {
+        var size = image.size
+        guard size.width > 0, size.height > 0 else { return .zero }
+        if size.width > available { size = CGSize(width: available, height: size.height * available / size.width) }
+        if size.height > imageMaxHeight { size = CGSize(width: size.width * imageMaxHeight / size.height, height: imageMaxHeight) }
+        return CGSize(width: size.width.rounded(), height: size.height.rounded())
+    }
+
     /// Width a grid gets inside a line fragment of `width`.
     func gridWidth(forFragmentWidth width: CGFloat) -> CGFloat {
         width - 2 * (textContainers.first?.lineFragmentPadding ?? 5)
@@ -69,9 +96,14 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
 
     /// Where the grid of a rendered table sits, in container coordinates.
     func gridFrame(for block: NSRange) -> (TableGrid, CGPoint)? {
-        let glyphs = glyphRange(forCharacterRange: NSRange(location: block.location, length: 1), actualCharacterRange: nil)
+        // The grid sits in the tallest fragment: the one the first row made room in.
+        let glyphs = glyphRange(forCharacterRange: block, actualCharacterRange: nil)
         guard glyphs.length > 0 else { return nil }
-        let fragment = lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
+        var fragment = CGRect.null
+        enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, _, _ in
+            if fragment.isNull || rect.height > fragment.height { fragment = rect }
+        }
+        guard !fragment.isNull else { return nil }
         guard let grid = grid(for: block, available: gridWidth(forFragmentWidth: fragment.width)) else { return nil }
         let padding = textContainers.first?.lineFragmentPadding ?? 5
         return (grid, CGPoint(x: fragment.minX + padding, y: fragment.minY + TableGrid.margin))
@@ -160,6 +192,30 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
                 context.restoreGState()
             }
 
+            var imageLocation = charRange.location
+            while imageLocation < NSMaxRange(charRange) {
+                var effective = NSRange()
+                let value = storage.attribute(.qmImage, at: imageLocation, longestEffectiveRange: &effective, in: full)
+                if value != nil, let (line, image) = renderedImage(at: imageLocation) {
+                    let glyphs = glyphRange(forCharacterRange: line, actualCharacterRange: nil)
+                    var fragment = CGRect.null
+                    enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, _, _ in
+                        if fragment.isNull || rect.height > fragment.height { fragment = rect }
+                    }
+                    if !fragment.isNull {
+                        let padding = textContainers.first?.lineFragmentPadding ?? 5
+                        let size = Self.imageSize(image, available: gridWidth(forFragmentWidth: fragment.width))
+                        let rect = CGRect(x: origin.x + fragment.minX + padding, y: origin.y + fragment.minY + Self.imageMargin,
+                                          width: size.width, height: size.height)
+                        NSGraphicsContext.saveGraphicsState()
+                        NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).addClip()
+                        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                        NSGraphicsContext.restoreGraphicsState()
+                    }
+                }
+                imageLocation = max(imageLocation + 1, NSMaxRange(effective))
+            }
+
             blocks(.qmCallout) { panel, value, _ in
                 guard let color = value as? NSColor else { return }
                 context.saveGState()
@@ -181,7 +237,11 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
         let glyphs = glyphRange(forCharacterRange: range, actualCharacterRange: nil)
         guard glyphs.length > 0 else { return nil }
         var union = CGRect.null
-        enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, _, _ in
+        enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, lineGlyphs, _ in
+            // Hidden glyphs opening a block (`> `, a fence) hang on the
+            // line before; that line isn't part of the block's panel.
+            let first = self.characterIndexForGlyph(at: lineGlyphs.location)
+            guard first >= range.location || lineGlyphs.location >= glyphs.location && NSMaxRange(lineGlyphs) > NSMaxRange(glyphs) else { return }
             union = union.isNull ? rect : union.union(rect)
         }
         return union.isNull ? nil : union
@@ -201,7 +261,7 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
             let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont ?? .systemFont(ofSize: 15)
             let side = (font.pointSize * 0.95).rounded()
             let rect = NSRect(
-                x: origin.x + box.midX - side / 2,
+                x: origin.x + box.minX + 1,  // left-aligned: `[x]` is wider than `[ ]`
                 y: origin.y + baseline - font.capHeight / 2 - side / 2,
                 width: side, height: side
             )

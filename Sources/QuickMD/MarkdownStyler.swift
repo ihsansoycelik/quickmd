@@ -11,6 +11,10 @@ extension NSAttributedString.Key {
     /// A markdown token (`##`, `**`, a backtick…). Reading mode hides
     /// these characters; writing mode shows them dimmed.
     static let qmSyntax = NSAttributedString.Key("qmSyntax")
+    /// A task's `- `: drawn on the caret line, zero width elsewhere.
+    /// An image-only line; the value is the image's target as written.
+    static let qmImage = NSAttributedString.Key("qmImage")
+    static let qmTaskBullet = NSAttributedString.Key("qmTaskBullet")
     /// A dimmed marker that reading mode still shows (a list bullet).
     static let qmKeepSyntax = NSAttributedString.Key("qmKeepSyntax")
 }
@@ -299,8 +303,9 @@ enum MarkdownStyler {
                     let line = ns.substring(with: content) as NSString
                     let colon = line.range(of: ":")
                     let keyLength = colon.location == NSNotFound ? 0 : colon.location + 1
-                    storage.addAttribute(.foregroundColor, value: style.syntax,
-                                         range: NSRange(location: content.location, length: keyLength))
+                    // Dimmed but kept: a value without its key means nothing.
+                    storage.addAttributes([.foregroundColor: style.syntax, .qmKeepSyntax: true],
+                                          range: NSRange(location: content.location, length: keyLength))
                 }
                 continue
             }
@@ -376,6 +381,12 @@ enum MarkdownStyler {
             }
 
             let line = ns.substring(with: content)
+            // A line that is only an image: reading mode draws the picture.
+            if first == 0x21 || first == 0x20,  // ! (maybe indented)
+               let image = imageLinePattern.firstMatch(in: text, range: content) {
+                storage.addAttribute(.qmImage, value: ns.substring(with: image.range(at: 1)), range: lineRange)
+            }
+
             if TableEditing.isRow(line) {
                 styleTableRow(content, lineRange: lineRange, storage: storage, ns: ns, style: style)
                 continue
@@ -401,17 +412,34 @@ enum MarkdownStyler {
 
             if mayBeListMarker(ns, content),
                let marker = listMarkerPattern.firstMatch(in: text, range: content) {
-                storage.addAttributes([.foregroundColor: style.syntax, .qmKeepSyntax: true], range: marker.range(at: 1))
+                let bullet = marker.range(at: 1)
+                // A task's box stands in for its bullet: the `-` hides in reading mode.
+                let isTask = bullet.length == 1 && Checkbox.boxRange(in: line) != nil
+                storage.addAttributes([.foregroundColor: style.syntax, .qmKeepSyntax: true], range: bullet)
+                if isTask {
+                    // Folded to zero width off the caret line (not hidden
+                    // like a token, which would hang on the line before).
+                    storage.addAttribute(.qmTaskBullet, value: true, range: NSRange(location: bullet.location, length: NSMaxRange(marker.range) - bullet.location))
+                }
+                // Nested items step in a clear indent, not two narrow spaces.
+                var spaces = 0
+                while content.location + spaces < bullet.location, ns.character(at: content.location + spaces) == 0x20 { spaces += 1 }
+                let step = (style.base.pointSize * 0.5).rounded()
+                if spaces > 0 {
+                    storage.addAttribute(.kern, value: step, range: NSRange(location: content.location, length: spaces))
+                }
                 // Wrapped lines of an item hang under its text, not its
                 // bullet. A task's box counts as part of the marker.
                 var prefixEnd = NSMaxRange(marker.range)
                 if let box = Checkbox.boxRange(in: line), content.location + NSMaxRange(box) + 1 <= NSMaxRange(content) {
                     prefixEnd = content.location + NSMaxRange(box) + 1
                 }
-                let prefix = ns.substring(with: NSRange(location: content.location, length: prefixEnd - content.location))
+                let prefixStart = isTask ? NSMaxRange(marker.range) : content.location
+                let prefix = (isTask ? ns.substring(with: NSRange(location: content.location, length: spaces)) : "")
+                    + ns.substring(with: NSRange(location: prefixStart, length: prefixEnd - prefixStart))
                     .replacingOccurrences(of: "\t", with: "    ")
                 let paragraph = style.body.mutableCopy() as! NSMutableParagraphStyle
-                paragraph.headIndent = (prefix as NSString).size(withAttributes: [.font: style.base]).width
+                paragraph.headIndent = (prefix as NSString).size(withAttributes: [.font: style.base]).width + CGFloat(spaces) * step
                 if !nextBlank { paragraph.paragraphSpacing = style.listSpacing }
                 storage.addAttribute(.paragraphStyle, value: paragraph, range: lineRange)
             }
@@ -520,7 +548,8 @@ enum MarkdownStyler {
         let boxRange = NSRange(location: content.location + box.location, length: box.length)
         if checked {
             storage.addAttribute(.foregroundColor, value: style.done, range: content)
-            let textStart = content.location + NSMaxRange(box)
+            var textStart = content.location + NSMaxRange(box)
+            while textStart < NSMaxRange(content), ns.character(at: textStart) == 0x20 { textStart += 1 }
             let textLength = NSMaxRange(content) - textStart
             if textLength > 0 {
                 storage.addAttributes([
@@ -661,7 +690,31 @@ enum MarkdownStyler {
                   let url = linkURL(ns.substring(with: r)) else { return }
             storage.addAttributes(linkAttributes(url, style), range: r)
         }
+        // Footnotes: `[^1]` reads as a raised 1; a `[^1]:` definition
+        // keeps its label, dimmed.
+        footnotePattern.enumerateMatches(in: text, range: range) { match, _, _ in
+            guard let match, !isCode(match.range) else { return }
+            let r = match.range, label = match.range(at: 1)
+            let isDefinition = NSMaxRange(r) < ns.length && ns.character(at: NSMaxRange(r)) == 0x3A
+                && (r.location == 0 || ns.character(at: r.location - 1) == 0x0A)
+            if isDefinition {
+                storage.addAttributes([.foregroundColor: style.syntax, .qmKeepSyntax: true],
+                                      range: NSRange(location: r.location, length: r.length + 1))
+                return
+            }
+            dim(r.location, 2)
+            dim(NSMaxRange(r) - 1, 1)
+            let font = storage.attribute(.font, at: label.location, effectiveRange: nil) as? NSFont ?? style.base
+            storage.addAttributes([
+                .font: NSFont(descriptor: font.fontDescriptor, size: (font.pointSize * 0.72).rounded()) ?? font,
+                .baselineOffset: (font.pointSize * 0.35).rounded(),
+                .foregroundColor: style.link ?? style.palette.strong,
+            ], range: label)
+        }
     }
+
+    private static let imageLinePattern = try! NSRegularExpression(pattern: #"^\s{0,3}!\[[^\]]*\]\(<?([^)\s>]+)>?(?:\s+"[^"]*")?\)\s*$"#)
+    private static let footnotePattern = try! NSRegularExpression(pattern: #"\[\^([^\]\s]+)\]"#)
 
     /// Underlined in the body colour, or (Looq) the link colour alone.
     private static func linkAttributes(_ url: URL, _ style: Style) -> [NSAttributedString.Key: Any] {
