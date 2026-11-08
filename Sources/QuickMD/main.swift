@@ -33,7 +33,7 @@ if let flag = CommandLine.arguments.firstIndex(of: "--render") {
         let title = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
         print(MarkdownHTML.page(
             body: MarkdownHTML.render(text), title: title, theme: args.contains("--dark") ? .dark : .light,
-            template: .looq, fontFamily: FontFace.sanFrancisco.cssFamily, fontSize: 14, baseURL: nil, assets: .embedded
+            template: .looq, fontFamily: FontFace.sanFrancisco.cssFamily, fontSize: 16, baseURL: nil, assets: .embedded
         ), terminator: "")
         exit(0)
     }

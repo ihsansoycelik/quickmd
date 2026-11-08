@@ -2,15 +2,16 @@ import AppKit
 import UniformTypeIdentifiers
 import WebKit
 
-/// One window per document: outline sidebar, editor, and an optional
-/// live preview, in a split view.
+/// One window per document: the outline sidebar beside the one view —
+/// a live-styled text view that reads like the page and edits like
+/// markdown, its tokens showing only on the caret's line.
 final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation,
     NSToolbarDelegate, NSSharingServicePickerToolbarItemDelegate {
     private let split = NSSplitViewController()
     private let editor = EditorViewController()
     private let outline = OutlineViewController()
     private var outlineItem: NSSplitViewItem!
-    private weak var modeButton: NSToolbarItem?
+    private var editorItem: NSSplitViewItem!
     private var settingsObserver: Any?
     /// Glass chrome: blur behind the window, a tint over it, content on top.
     private let glass = NSVisualEffectView()
@@ -41,11 +42,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         outlineItem.maximumThickness = 360
         outlineItem.isCollapsed = !Settings.showsOutline
         outlineItem.canCollapse = true
-        let editorItem = NSSplitViewItem(viewController: editor)
+        editorItem = NSSplitViewItem(viewController: editor)
         editorItem.minimumThickness = 280
+        editorItem.canCollapse = true
         split.addSplitViewItem(outlineItem)
         split.addSplitViewItem(editorItem)
-        split.splitView.autosaveName = "QuickMDSplit"
 
         let container = NSViewController()
         let root = NSView()
@@ -70,9 +71,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         if window.frame.width < 600 { window.setContentSize(NSSize(width: 900, height: 700)) }
         if !window.setFrameUsingName("QuickMDDocument") { window.center() }
 
-        editor.onTextChange = { [weak self] text in
-            self?.outline.update(text: text)
-        }
+        editor.onTextChange = { [weak self] text in self?.outline.update(text: text) }
         editor.onCaretMove = { [weak self] location in self?.outline.highlight(location: location) }
         outline.onSelect = { [weak self] location in self?.editor.reveal(location: location) }
 
@@ -92,8 +91,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
         outline.update(text: document.text)
         applyTheme()
-        // A new, empty note starts in writing mode.
-        if document.text.isEmpty { editor.isReading = false }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -109,7 +106,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
-        window?.makeFirstResponder(editor.textView)
+        guard let window, window.firstResponder === window || window.firstResponder == nil else { return }
+        window.makeFirstResponder(editor.textView)
     }
 
     override func synchronizeWindowTitleWithDocumentName() {
@@ -131,13 +129,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         tint.layer?.backgroundColor = chrome.tintColor.cgColor
     }
 
-    // MARK: Reading / writing
-
-    @objc func toggleReadingMode(_ sender: Any?) {
-        editor.isReading.toggle()
-        modeButton?.image = NSImage(
-            systemSymbolName: editor.isReading ? "eye" : "pencil", accessibilityDescription: "Mode")
-    }
+    // MARK: Sidebar
 
     @objc func toggleOutline(_ sender: Any?) {
         outlineItem.animator().isCollapsed.toggle()
@@ -147,11 +139,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     // MARK: Toolbar
 
     private enum ToolbarID {
-        static let toolbar = NSToolbar.Identifier("QuickMDToolbar")
+        static let toolbar = NSToolbar.Identifier("QuickMDToolbar3")
         static let outline = NSToolbarItem.Identifier("outline")
         static let separator = NSToolbarItem.Identifier("outlineSeparator")
         static let format = NSToolbarItem.Identifier("format")
-        static let preview = NSToolbarItem.Identifier("preview")
         static let share = NSToolbarItem.Identifier("share")
     }
 
@@ -170,7 +161,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.outline, ToolbarID.separator, .flexibleSpace, ToolbarID.format, ToolbarID.preview, ToolbarID.share]
+        [ToolbarID.outline, ToolbarID.separator, .flexibleSpace, ToolbarID.format, ToolbarID.share]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -195,10 +186,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             return button("Outline", "sidebar.left", #selector(toggleOutline(_:)), tip: "Show or hide the outline (⌃⌘S)")
         case ToolbarID.separator:
             return NSTrackingSeparatorToolbarItem(identifier: id, splitView: split.splitView, dividerIndex: 0)
-        case ToolbarID.preview:
-            let item = button("Mode", "eye", #selector(toggleReadingMode(_:)), tip: "Switch between reading and writing (⌥⌘P)")
-            modeButton = item
-            return item
         case ToolbarID.format:
             let item = NSMenuToolbarItem(itemIdentifier: id)
             item.label = "Format"
@@ -326,8 +313,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(toggleReadingMode(_:)):
-            menuItem.title = editor.isReading ? "Edit Markdown" : "Reading Mode"
         case #selector(toggleOutline(_:)):
             menuItem.title = outlineItem.isCollapsed ? "Show Sidebar" : "Hide Sidebar"
         case #selector(printRenderedDocument(_:)), #selector(exportPDF(_:)):

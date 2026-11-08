@@ -36,6 +36,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView = MarkdownTextView(frame: .zero, textContainer: container)
         super.init(nibName: nil, bundle: nil)
         layoutManager.delegate = self
+        layoutManager.tableIsRendered = { [weak self] block in
+            guard let self, self.isReading else { return false }
+            return self.activeTable.map { NSIntersectionRange($0, block).length == 0 } ?? true
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -121,7 +125,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let selection = textView.selectedRange()
         textView.string = text
         pendingEdit = nil
-        restyle()
+        restyleForDisplay()
         let length = (text as NSString).length
         textView.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
         textView.undoManager?.removeAllActions()
@@ -149,6 +153,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// off until it's done, three seconds at most.
     func play(_ text: String) {
         finishPlayback()
+        chunkWork?.cancel()
+        chunkWork = nil
+        styledUpTo = 0
         guard let storage = textView.textStorage, text != textView.string else { return }
         let old = textView.string as NSString, new = text as NSString
         let shorter = min(old.length, new.length)
@@ -210,6 +217,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.isEditable = true
         // The storage changed under the text view; old undo steps point at the wrong places.
         textView.undoManager?.removeAllActions()
+        // Chunked styling resumes over a big note; small ones are done.
+        if (textView.string as NSString).length > Self.progressiveLimit, styledUpTo < (textView.string as NSString).length {
+            scheduleChunk()
+        } else {
+            styledUpTo = (textView.string as NSString).length
+        }
         noteChanged(immediately: true)
         fadeGlow(NSRange(location: p.start, length: p.inserted.length))
     }
@@ -279,11 +292,30 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// The line the caret is in: its tokens stay visible in reading mode.
     private var activeLine = NSRange(location: 0, length: 0)
 
+    /// The table the caret is in: shown as source, not as a grid.
+    private var activeTable: NSRange?
+
     private func updateActiveLine() {
         guard isReading, let layoutManager = textView.layoutManager else { return }
         let ns = textView.string as NSString
         let caret = min(textView.selectedRange().location, ns.length)
         let line = ns.lineRange(for: NSRange(location: caret, length: 0))
+        var table: NSRange?
+        if let storage = textView.textStorage, line.location < storage.length {
+            var block = NSRange()
+            if storage.attribute(.qmTable, at: line.location, longestEffectiveRange: &block, in: NSRange(location: 0, length: storage.length)) != nil {
+                table = block
+            }
+        }
+        if table != activeTable {
+            let old = activeTable
+            activeTable = table
+            for r in [old, table].compactMap({ $0 }) {
+                let clipped = NSIntersectionRange(r, NSRange(location: 0, length: ns.length))
+                if clipped.length > 0 { refresh(clipped, layoutManager) }
+            }
+            textView.needsDisplay = true
+        }
         guard line != activeLine else { return }
         let old = NSIntersectionRange(activeLine, NSRange(location: 0, length: ns.length))
         activeLine = line
@@ -298,6 +330,19 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     ) -> Bool {
         guard isReading, let storage = layoutManager.textStorage else { return false }
         let at = layoutManager.characterIndexForGlyph(at: glyphRange.location)
+        // A table drawn as a grid: its first row makes room for the
+        // whole grid, the other rows fold away.
+        if let grids = layoutManager as? HorizontalRuleLayoutManager, let block = grids.renderedTable(at: at) {
+            var height: CGFloat = 0
+            if (storage.string as NSString).lineRange(for: NSRange(location: at, length: 0)).location == block.location,
+               let grid = grids.grid(for: block, available: grids.gridWidth(forFragmentWidth: lineFragmentRect.pointee.width)) {
+                height = grid.height + 2 * TableGrid.margin
+            }
+            lineFragmentRect.pointee.size.height = height
+            lineFragmentUsedRect.pointee.size.height = height
+            baselineOffset.pointee = 0
+            return true
+        }
         guard at < storage.length, !NSLocationInRange(at, activeLine) else { return false }
         if storage.attribute(.qmTableDelimiter, at: at, effectiveRange: nil) != nil {
             lineFragmentRect.pointee.size.height = 1
@@ -332,9 +377,21 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         var bullet: UniChar = 0x2022
         var bulletGlyph: CGGlyph = 0
         let hasBullet = CTFontGetGlyphsForCharacters(aFont, &bullet, &bulletGlyph, 1)
+        let grids = layoutManager as? HorizontalRuleLayoutManager
+        var table: NSRange?
+        var notTable = -1
         for i in 0..<glyphRange.length {
             out[i] = props[i]
             let at = charIndexes[i]
+            // A table drawn as a grid hides its source text.
+            if let grids, at != notTable, storage.attribute(.qmTable, at: at, effectiveRange: nil) != nil {
+                if table.map({ !NSLocationInRange(at, $0) }) ?? true { table = grids.renderedTable(at: at) }
+                if let table, NSLocationInRange(at, table) {
+                    if !props[i].contains(.controlCharacter) { out[i] = .null; changed = true }
+                    continue
+                }
+                notTable = at
+            }
             if !NSLocationInRange(at, activeLine), storage.attribute(.qmSyntax, at: at, effectiveRange: nil) != nil {
                 out[i] = .null
                 changed = true
@@ -352,12 +409,109 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         return glyphRange.length
     }
 
-    private func restyle(edited: NSRange? = nil) {
+    /// Fence starts kept between keystrokes, so a large note's blocks
+    /// don't rescan on every key. A full restyle (load, settings) resets it.
+    private let fenceIndex = FenceIndex()
+
+    /// Above this many characters styling runs in chunks: the opening
+    /// screen is styled at once, the rest fills in while the note is
+    /// being read. Below it, a full restyle is quick enough.
+    private static let progressiveLimit = 150_000
+    private static let chunkSize = 80_000
+    /// Past this (UTF-16 units ≈ a 5 MB file), the note keeps its source
+    /// look: markdown styling a note that big costs more than it gives.
+    private static let plainTextLimit = 2_500_000
+    /// Where chunk styling has reached; `length` when fully styled.
+    private var styledUpTo = 0
+    private var chunkWork: DispatchWorkItem?
+    /// The note is past the plain-text limit: no markdown styling.
+    private var isPlainText = false
+
+    /// Styles the note for display: small notes at once, big ones in
+    /// chunks that keep the opening screen quick, huge ones as plain text.
+    func restyleForDisplay() {
+        chunkWork?.cancel()
+        chunkWork = nil
         guard let storage = textView.textStorage else { return }
+        let length = (storage.string as NSString).length
+        guard length <= Self.plainTextLimit else {
+            isPlainText = true
+            styledUpTo = length
+            applyPlainTextLook(storage)
+            updateStatus()
+            return
+        }
+        isPlainText = false
+        guard length > Self.progressiveLimit else {
+            styledUpTo = length
+            restyle()
+            updateStatus()
+            return
+        }
+        styledUpTo = 0
+        styleNextChunk()
+        scheduleChunk()
+    }
+
+    /// One chunk of a progressive restyle, ending on a blank line where
+    /// one is near so a table or quote block isn't cut in half. Fences
+    /// may straddle the edge: their membership comes from the global
+    /// fence list, and contiguous attributes draw one panel anyway.
+    private func styleNextChunk() {
+        guard let storage = textView.textStorage else { return }
+        let ns = storage.string as NSString
+        let length = ns.length
+        guard styledUpTo < length else { styledUpTo = length; return }
+        var end = min(styledUpTo + Self.chunkSize, length)
+        var hunt = end
+        for _ in 0..<40 where hunt < length {
+            let line = ns.lineRange(for: NSRange(location: hunt, length: 0))
+            var i = line.location
+            while i < NSMaxRange(line),
+                  ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09
+                  || ns.character(at: i) == 0x0A || ns.character(at: i) == 0x0D { i += 1 }
+            hunt = NSMaxRange(line)
+            end = NSMaxRange(line)
+            if i == NSMaxRange(line) { break }  // a blank line: a clean edge
+        }
+        restyle(chunk: NSRange(location: styledUpTo, length: end - styledUpTo))
+        styledUpTo = end
+        if styledUpTo >= length { updateStatus() }
+    }
+
+    private func scheduleChunk() {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.styleNextChunk()
+            if self.styledUpTo < (self.textView.string as NSString).length {
+                self.scheduleChunk()
+            } else {
+                self.chunkWork = nil
+            }
+        }
+        chunkWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02, execute: work)
+    }
+
+    /// The huge-note look: the body font and colour, nothing else.
+    private func applyPlainTextLook(_ storage: NSTextStorage) {
+        let palette = Palette.for(Settings.theme, template: Settings.template)
+        storage.setAttributes(
+            [.font: textView.font ?? .systemFont(ofSize: Settings.fontSize), .foregroundColor: palette.text],
+            range: NSRange(location: 0, length: (storage.string as NSString).length)
+        )
+    }
+
+    private func restyle(edited: NSRange? = nil, chunk: NSRange? = nil) {
+        guard let storage = textView.textStorage else { return }
+        guard !isPlainText else {
+            applyPlainTextLook(storage)
+            return
+        }
         MarkdownStyler.restyle(
             storage, face: Settings.fontFace, size: Settings.fontSize,
             theme: Settings.theme, template: Settings.template,
-            headingFace: Settings.headingFace, edited: edited
+            headingFace: Settings.headingFace, edited: edited, chunk: chunk, fenceIndex: fenceIndex
         )
     }
 
@@ -468,6 +622,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             layoutManager.panelBorderColor = palette.divider
             layoutManager.panelFillColor = Palette.codeBackground(for: theme, template: template)
             layoutManager.checkboxColor = palette.text.withAlphaComponent(0.5)
+            layoutManager.tableBodyFont = MarkdownStyler.bodyFont(face: Settings.fontFace, size: Settings.fontSize, template: template)
         }
         let font = MarkdownStyler.bodyFont(face: Settings.fontFace, size: Settings.fontSize, template: template)
         textView.font = font
@@ -476,7 +631,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             .foregroundColor: palette.text,
             .paragraphStyle: MarkdownStyler.bodyParagraph(font: font, template: template),
         ]
-        restyle()
+        restyleForDisplay()
         updateColumn()
         updateStatus()
         textView.needsDisplay = true
@@ -499,12 +654,15 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     private func updateStatus() {
         guard Settings.showsStatusBar else { return }
         let selection = textView.selectedRange()
+        var label: String
         if selection.length > 0 {
             let selected = TextStats.counts(in: (textView.string as NSString).substring(with: selection))
-            footer.label = Settings.footerStat.label(selected, of: stats)
+            label = Settings.footerStat.label(selected, of: stats)
         } else {
-            footer.label = Settings.footerStat.label(stats)
+            label = Settings.footerStat.label(stats)
         }
+        if isPlainText { label += " · plain text" }
+        footer.label = label
     }
 
     @objc private func cycleFooterStat(_ sender: Any?) {

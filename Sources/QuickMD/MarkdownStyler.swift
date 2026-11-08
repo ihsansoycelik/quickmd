@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 extension NSAttributedString.Key {
     /// Inline `$…$` math, literal like code.
@@ -27,6 +28,29 @@ extension NSAttributedString.Key {
 enum MarkdownStyler {
     nonisolated static let lineHeightMultiple: CGFloat = 1.35
 
+    private static let signposter = OSSignposter(subsystem: "com.ursula.quickmd", category: "styling")
+
+    /// The last Style built. Building one means resolving fonts (CoreText
+    /// lookups) and paragraph styles, which every restyle would otherwise
+    /// repeat; the inputs are a handful of settings, so a hit is the
+    /// common case. The first build of a launch stays slow — that's the
+    /// font system warming up, not the cache.
+    private static var cachedStyle: (key: StyleKey, style: Style)?
+
+    private struct StyleKey: Equatable {
+        let face: FontFace, size: CGFloat, theme: Theme, template: Template, headingFace: FontFace?
+    }
+
+    private static func style(
+        for face: FontFace, size: CGFloat, theme: Theme, template: Template, headingFace: FontFace?
+    ) -> Style {
+        let key = StyleKey(face: face, size: size, theme: theme, template: template, headingFace: headingFace)
+        if let cachedStyle, cachedStyle.key == key { return cachedStyle.style }
+        let style = Style(face: face, size: size, theme: theme, template: template, headingFace: headingFace)
+        cachedStyle = (key, style)
+        return style
+    }
+
     // Spans never cross a line break of any kind: a paragraph restyle
     // only sees whole paragraphs, and NSString ends those at CR and
     // U+2029 as well as LF. Emphasis must touch a word at both ends —
@@ -52,7 +76,7 @@ enum MarkdownStyler {
     private static let markPattern = try! NSRegularExpression(
         pattern: #"==([^\s=](?:[^=\n\r\u2029]*[^\s=])?)=="#
     )
-    private static let headingPattern = try! NSRegularExpression(pattern: #"^(#{1,6})\s+\S"#)
+    private static let headingPattern = try! NSRegularExpression(pattern: #"^(#{1,6}\s+)\S"#)
     /// http(s) URLs, not ending on sentence punctuation. Parentheses
     /// count only in balanced pairs, so `(see https://x.io)` stops at
     /// the `)` while `…/wiki/Foo_(bar)` keeps it. A pattern rather than
@@ -98,7 +122,11 @@ enum MarkdownStyler {
     }
 
     /// Restyle `storage`. With `edited`, only the paragraphs it touches
-    /// are restyled, unless the edit moved a code-block boundary.
+    /// are restyled, unless the edit moved a code-block boundary. With
+    /// `chunk`, exactly that range is restyled (a progressive chunk; the
+    /// caller keeps its boundaries on paragraph and blank-line edges).
+    /// `fenceIndex`, when given, keeps fence line starts across calls so
+    /// an edit doesn't rescan a large note; it resets on a full restyle.
     static func restyle(
         _ storage: NSTextStorage,
         face: FontFace,
@@ -106,13 +134,29 @@ enum MarkdownStyler {
         theme: Theme,
         template: Template = .classic,
         headingFace: FontFace? = nil,
-        edited: NSRange? = nil
+        edited: NSRange? = nil,
+        chunk: NSRange? = nil,
+        fenceIndex: FenceIndex? = nil
     ) {
         let ns = storage.string as NSString
         guard ns.length > 0 else { return }
-        let (fences, mathFences) = blockFenceLineStarts(in: ns)
+        let intervalName: StaticString = chunk != nil ? "restyle chunk" : (edited == nil ? "restyle full" : "restyle paragraph")
+        let interval = signposter.beginInterval(intervalName)
+        defer { signposter.endInterval(intervalName, interval) }
+        let (fences, mathFences): ([Int], [Int])
+        if let fenceIndex {
+            if let edited {
+                (fences, mathFences) = fenceIndex.update(ns: ns, edited: edited)
+            } else {
+                (fences, mathFences) = fenceIndex.reset(ns: ns)
+            }
+        } else {
+            (fences, mathFences) = blockFenceLineStarts(in: ns)
+        }
         var range = NSRange(location: 0, length: ns.length)
-        if let edited {
+        if let chunk {
+            range = chunk
+        } else if let edited {
             let start = min(max(0, edited.location), ns.length)
             // One character past the edit: an edit ending in a newline
             // hands the next line a new start, and line-level styles
@@ -129,7 +173,7 @@ enum MarkdownStyler {
         }
         guard range.length > 0 else { return }
 
-        let style = Style(face: face, size: size, theme: theme, template: template, headingFace: headingFace)
+        let style = Self.style(for: face, size: size, theme: theme, template: template, headingFace: headingFace)
         storage.beginEditing()
         defer { storage.endEditing() }
         // Replace, not add: anything a pass applied last time has to go,
@@ -217,6 +261,8 @@ enum MarkdownStyler {
         // it up per line walks back to the block's start each time,
         // which made a long quote quadratic.
         var quoteKind: (end: Int, kind: CalloutKind?)?
+        // Front matter reads as quiet metadata: keys dimmed, no headings or lists.
+        let frontMatterEnd = HorizontalRuleLayoutManager.frontMatterClose(in: ns)
         while lineStart < end {
             let lineRange = ns.lineRange(for: NSRange(location: lineStart, length: 0))
             lineStart = NSMaxRange(lineRange)
@@ -244,6 +290,17 @@ enum MarkdownStyler {
                             range: NSRange(location: content.location + token.range.location, length: token.range.length)
                         )
                     }
+                }
+                continue
+            }
+
+            if let close = frontMatterEnd, lineRange.location > 0, lineRange.location < close {
+                if content.length > 0 {
+                    let line = ns.substring(with: content) as NSString
+                    let colon = line.range(of: ":")
+                    let keyLength = colon.location == NSNotFound ? 0 : colon.location + 1
+                    storage.addAttribute(.foregroundColor, value: style.syntax,
+                                         range: NSRange(location: content.location, length: keyLength))
                 }
                 continue
             }
@@ -289,7 +346,9 @@ enum MarkdownStyler {
             let first = ns.character(at: content.location)
             if first == 0x23,  // #
                let match = headingPattern.firstMatch(in: text, range: content) {
-                let hashes = match.range(at: 1)
+                let marker = match.range(at: 1)
+                var hashes = marker
+                while hashes.length > 0, ns.character(at: NSMaxRange(hashes) - 1) != 0x23 { hashes.length -= 1 }
                 storage.addAttributes([
                     .font: style.heading(level: hashes.length),
                     .foregroundColor: style.headingColor(level: hashes.length),
@@ -300,12 +359,11 @@ enum MarkdownStyler {
                 ], range: content)
                 // The space after the hashes too, so reading mode hides it
                 // and the heading lines up with the text below.
-                let marker = NSRange(location: hashes.location, length: match.range.length - 1)
                 storage.addAttribute(.foregroundColor, value: style.syntax, range: marker)
                 continue
             }
 
-            if displayMathLinePattern.firstMatch(in: text, range: content) != nil {
+            if mayBeDisplayMath(ns, content), displayMathLinePattern.firstMatch(in: text, range: content) != nil {
                 storage.addAttributes([
                     .font: style.mono, .foregroundColor: style.palette.strong,
                     .paragraphStyle: style.centered, .qmMathInline: true,
@@ -341,7 +399,8 @@ enum MarkdownStyler {
                 continue
             }
 
-            if let marker = listMarkerPattern.firstMatch(in: text, range: content) {
+            if mayBeListMarker(ns, content),
+               let marker = listMarkerPattern.firstMatch(in: text, range: content) {
                 storage.addAttributes([.foregroundColor: style.syntax, .qmKeepSyntax: true], range: marker.range(at: 1))
                 // Wrapped lines of an item hang under its text, not its
                 // bullet. A task's box counts as part of the marker.
@@ -417,7 +476,12 @@ enum MarkdownStyler {
         ], range: lineRange)
         let line = ns.substring(with: content)
         if TableEditing.isDelimiter(line) {
-            storage.addAttributes([.foregroundColor: style.syntax, .qmTableDelimiter: true], range: lineRange)
+            // The hide-me flag covers the whole line (the row collapses to
+            // a hairline); the dim colour stops at the content, so the
+            // line break keeps the body colour and never merges into a
+            // foreground run with the next row's first pipe.
+            storage.addAttribute(.qmTableDelimiter, value: true, range: lineRange)
+            storage.addAttribute(.foregroundColor, value: style.syntax, range: content)
             return
         }
         // A header row is the one right above the delimiter.
@@ -430,7 +494,13 @@ enum MarkdownStyler {
             }
         }
         for i in 0..<content.length where ns.character(at: content.location + i) == 0x7C {
-            storage.addAttribute(.foregroundColor, value: style.syntax, range: NSRange(location: content.location + i, length: 1))
+            // A cell separator, not a token to hide: reading mode keeps the
+            // pipe dimmed but drawn, so an unpadded table still shows its
+            // columns. (Like a list marker, not like a `**`.)
+            storage.addAttributes(
+                [.foregroundColor: style.syntax, .qmKeepSyntax: true],
+                range: NSRange(location: content.location + i, length: 1)
+            )
         }
     }
 
@@ -470,6 +540,30 @@ enum MarkdownStyler {
         guard i < end else { return false }
         let c = ns.character(at: i)
         return c == 0x2D || c == 0x2A || c == 0x2B
+    }
+
+    /// `^\s*\$\$.+\$\$\s*$` without a regex pass: after indent the line
+    /// must open with `$$`.
+    private static func mayBeDisplayMath(_ ns: NSString, _ content: NSRange) -> Bool {
+        var i = content.location
+        let end = NSMaxRange(content)
+        while i < end, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i += 1 }
+        return i + 1 < end && ns.character(at: i) == 0x24 && ns.character(at: i + 1) == 0x24
+    }
+
+    /// `^[ \t]*([-*+]|\d+\.)[ \t]` without a regex pass: after indent, a
+    /// bullet character or digits and a dot. The regex still decides.
+    private static func mayBeListMarker(_ ns: NSString, _ content: NSRange) -> Bool {
+        var i = content.location
+        let end = NSMaxRange(content)
+        while i < end, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i += 1 }
+        guard i < end else { return false }
+        let c = ns.character(at: i)
+        if c == 0x2D || c == 0x2A || c == 0x2B { return true }  // - * +
+        guard (0x30...0x39).contains(c) else { return false }
+        var j = i
+        while j < end, (0x30...0x39).contains(ns.character(at: j)) { j += 1 }
+        return j + 1 < end && ns.character(at: j) == 0x2E  // . after digits
     }
 
     // MARK: Inline
@@ -596,39 +690,49 @@ enum MarkdownStyler {
     /// characters. Runs on every keystroke, so it reads a flat buffer
     /// rather than searching and slicing the string per hit.
     static func blockFenceLineStarts(in ns: NSString) -> (code: [Int], math: [Int]) {
-        let n = ns.length
-        guard n > 0 else { return ([], []) }
-        var buffer = [unichar](repeating: 0, count: n)
-        ns.getCharacters(&buffer, range: NSRange(location: 0, length: n))
+        let (code, candidates) = scanFenceLineStarts(in: ns, range: NSRange(location: 0, length: ns.length))
+        let math = candidates.filter { !isInsideBlock($0, fences: code) }
+        return (code, math)
+    }
+
+    /// Code-fence line starts and raw `$$`-fence candidate line starts
+    /// within `range`. Math candidates come back unfiltered: parity
+    /// against code fences is the caller's business, so a partial rescan
+    /// doesn't need the whole note in view.
+    static func scanFenceLineStarts(in ns: NSString, range: NSRange) -> (code: [Int], mathCandidates: [Int]) {
+        let lower = range.location
+        let n = NSMaxRange(range)
+        guard lower >= 0, n <= ns.length, n > lower else { return ([], []) }
+        var buffer = [unichar](repeating: 0, count: n - lower)
+        ns.getCharacters(&buffer, range: NSRange(location: lower, length: n - lower))
         var code: [Int] = [], candidates: [Int] = []
         buffer.withUnsafeBufferPointer { c in
             func isBreak(_ u: unichar) -> Bool { u == 0x0A || u == 0x0D || u == 0x2028 || u == 0x2029 }
             func isSpace(_ u: unichar) -> Bool { u == 0x20 || u == 0x09 || u == 0x0B || u == 0x0C || u == 0xA0 }
             var i = 0
-            while i < n {
-                let start = i
+            while i < n - lower {
+                let start = i + lower
                 var j = i
-                while j < n, c[j] == 0x20 || c[j] == 0x09 { j += 1 }
-                if j + 2 < n, c[j] == 0x60, c[j + 1] == 0x60, c[j + 2] == 0x60 {
+                while j < n - lower, c[j] == 0x20 || c[j] == 0x09 { j += 1 }
+                if j + 2 < n - lower, c[j] == 0x60, c[j + 1] == 0x60, c[j + 2] == 0x60 {
                     code.append(start)
                 } else {
                     var k = j
-                    while k < n, isSpace(c[k]) { k += 1 }
-                    if k + 1 < n, c[k] == 0x24, c[k + 1] == 0x24 {
+                    while k < n - lower, isSpace(c[k]) { k += 1 }
+                    if k + 1 < n - lower, c[k] == 0x24, c[k + 1] == 0x24 {
                         var m = k + 2
-                        while m < n, isSpace(c[m]) { m += 1 }
-                        if m >= n || isBreak(c[m]) { candidates.append(start) }
+                        while m < n - lower, isSpace(c[m]) { m += 1 }
+                        if m >= n - lower || isBreak(c[m]) { candidates.append(start) }
                     }
                 }
                 // Next line: past the line break (CR LF counts as one).
                 var e = j
-                while e < n, !isBreak(c[e]) { e += 1 }
-                if e < n, c[e] == 0x0D, e + 1 < n, c[e + 1] == 0x0A { e += 1 }
+                while e < n - lower, !isBreak(c[e]) { e += 1 }
+                if e < n - lower, c[e] == 0x0D, e + 1 < n - lower, c[e + 1] == 0x0A { e += 1 }
                 i = e + 1
             }
         }
-        let math = candidates.filter { !isInsideBlock($0, fences: code) }
-        return (code, math)
+        return (code, candidates)
     }
 
     static func mathFenceLineStarts(in ns: NSString, codeFences: [Int]) -> [Int] { blockFenceLineStarts(in: ns).math }
@@ -636,7 +740,7 @@ enum MarkdownStyler {
     /// A non-fence line is inside a block when an odd number of fences
     /// open above it. An unclosed fence runs to the end of the document,
     /// so a block looks like code while you're still typing it.
-    private static func isInsideBlock(_ lineStart: Int, fences: [Int]) -> Bool {
+    static func isInsideBlock(_ lineStart: Int, fences: [Int]) -> Bool {
         countBelow(fences, lineStart) % 2 == 1
     }
 

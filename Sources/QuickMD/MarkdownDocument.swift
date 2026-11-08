@@ -7,11 +7,9 @@ import UniformTypeIdentifiers
 @objc(MarkdownDocument)
 final class MarkdownDocument: NSDocument {
     var text = ""
-    /// The encoding the file was read in, kept for writing it back.
-    private var encoding: String.Encoding = .utf8
-    /// The file's line breaks. The editor works in `\n` only; CRLF (and
-    /// old Mac CR) files are written back the way they came.
-    private var lineEnding = "\n"
+    /// How the file was stored (encoding, mark, line breaks), kept for
+    /// writing it back the same way. The editor works in `\n` only.
+    private var format = TextFile(text: "")
     weak var editor: EditorViewController?
     /// Set while reloading a change another app wrote, so it plays in live.
     private var reloadingLive = false
@@ -64,36 +62,13 @@ final class MarkdownDocument: NSDocument {
 
     override func data(ofType typeName: String) throws -> Data {
         if let editor { text = editor.currentText }
-        let output = lineEnding == "\n" ? text : text.replacingOccurrences(of: "\n", with: lineEnding)
-        guard let data = output.data(using: encoding) ?? output.data(using: .utf8) else {
-            throw CocoaError(.fileWriteInapplicableStringEncoding)
-        }
-        return data
+        return try format.encode(text)
     }
 
     override func read(from data: Data, ofType typeName: String) throws {
-        if let utf8 = String(data: data, encoding: .utf8) {
-            text = utf8
-            encoding = .utf8
-        } else {
-            var converted: NSString?
-            var lossy = ObjCBool(false)
-            let raw = NSString.stringEncoding(
-                for: data, encodingOptions: nil, convertedString: &converted, usedLossyConversion: &lossy
-            )
-            guard raw != 0, let converted else { throw CocoaError(.fileReadInapplicableStringEncoding) }
-            text = converted as String
-            encoding = String.Encoding(rawValue: raw)
-        }
-        // A BOM is an encoding detail, not part of the note.
-        if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
-        // By bytes: "\r\n" is one Character, so String's own search misses a lone "\r" in it.
-        if text.utf8.contains(0x0D) {
-            lineEnding = (text as NSString).range(of: "\r\n").location != NSNotFound ? "\r\n" : "\r"
-            text = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
-        } else {
-            lineEnding = "\n"
-        }
+        format = try TextFile.decode(data)
+        text = format.text
+        format.text = ""  // one copy of a big note is enough
         if reloadingLive { editor?.play(text) } else { editor?.load(text) }
     }
 

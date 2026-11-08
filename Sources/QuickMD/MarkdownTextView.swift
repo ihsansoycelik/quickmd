@@ -335,6 +335,12 @@ final class MarkdownTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        if event.clickCount == 1, !event.modifierFlags.contains(.shift), let cell = tableCell(at: point) {
+            window?.makeFirstResponder(self)
+            setSelectedRange(NSRange(location: cell, length: 0))
+            scrollRangeToVisible(NSRange(location: cell, length: 0))
+            return
+        }
         if let index = characterIndex(at: point) {
             if event.modifierFlags.contains(.command),
                let url = textStorage?.attribute(.qmLink, at: index, effectiveRange: nil) as? URL {
@@ -344,6 +350,31 @@ final class MarkdownTextView: NSTextView {
             if toggleCheckbox(at: index) { return }
         }
         super.mouseDown(with: event)
+    }
+
+    /// A click on a table drawn as a grid: the start of the clicked
+    /// cell's source text, so editing opens right where it was aimed.
+    private func tableCell(at point: NSPoint) -> Int? {
+        guard let grids = layoutManager as? HorizontalRuleLayoutManager, let container = textContainer,
+              let storage = textStorage, storage.length > 0 else { return nil }
+        let local = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        let index = grids.characterIndex(for: local, in: container, fractionOfDistanceBetweenInsertionPoints: nil)
+        guard let block = grids.renderedTable(at: min(index, storage.length - 1)),
+              let (grid, origin) = grids.gridFrame(for: block),
+              let hit = grid.cellIndex(at: CGPoint(x: local.x - origin.x, y: local.y - origin.y)) else { return nil }
+        let ns = storage.string as NSString
+        var rows: [NSRange] = []
+        var location = block.location
+        while location < NSMaxRange(block) {
+            let line = ns.lineRange(for: NSRange(location: location, length: 0))
+            let content = HorizontalRuleLayoutManager.lineContent(line, in: ns)
+            if !TableEditing.isDelimiter(ns.substring(with: content)) { rows.append(content) }
+            location = NSMaxRange(line)
+        }
+        guard hit.row < rows.count else { return nil }
+        let cells = TableGrid.cellRanges(rows[hit.row], in: ns)
+        guard !cells.isEmpty else { return rows[hit.row].location }
+        return cells[min(hit.column, cells.count - 1)].location
     }
 
     /// The character under `point`, only when the point is on its glyph.

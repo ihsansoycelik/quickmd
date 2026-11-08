@@ -127,9 +127,73 @@ struct RendererTests {
         let out = html("---\ntitle: Post\ndate: 2026-01-01\n---\n\n# Post")
         #expect(!out.contains("<hr>"))
         #expect(!out.contains("title:"))
+        #expect(out.contains("<div class=\"properties\">"))
+        #expect(out.contains("<span class=\"prop-value\">Post</span>"))
         #expect(out.contains("<h1"))
         // A rule at the top without key: lines is still a rule.
         #expect(html("---\n\ntext").contains("<hr>"))
+    }
+
+    @Test func emojiShortcodesAndCodeBars() {
+        #expect(html("Done :tada: and :nope: at 10:30:45").contains("Done 🎉 and :nope: at 10:30:45"))
+        #expect(html("`:tada:`").contains("<code>:tada:</code>"))
+        let code = html("```swift\nlet x = 1\n```")
+        #expect(code.contains("<span class=\"codelang\">swift</span>"))
+        #expect(code.contains("class=\"copy\""))
+    }
+
+    @Test func obsidianCallouts() {
+        let titled = html("> [!tip] Read this first\n> Body.")
+        #expect(titled.contains("</svg>Read this first</p>"))
+        #expect(titled.contains("<p>Body.</p>"))
+        let folded = html("> [!NOTE]-\n> Hidden.")
+        #expect(folded.contains("<details class=\"callout callout-note\">"))
+        #expect(!folded.contains(" open>"))
+        #expect(html("> [!faq]+ Why?\n> Because.").contains("<details class=\"callout callout-warning\" open>"))
+        #expect(html("> [!info]\n> x").contains("</svg>Info</p>"))
+        #expect(html("> [!nonsense]\n> x").contains("<blockquote>"))
+    }
+
+    @Test func footnotes() {
+        let out = html("A[^b] and B[^a].\n\n[^a]: First.\n[^b]: Second\n    continued.\n\n`[^a]` stays.")
+        #expect(out.contains("A<sup class=\"fnref\"><a href=\"#fn-b\" id=\"fnref-b\">1</a></sup>"))
+        #expect(out.contains("<a href=\"#fn-a\" id=\"fnref-a\">2</a>"))
+        #expect(out.contains("<code>[^a]</code>"))
+        #expect(out.contains("<li id=\"fn-b\">\n<p>Second\ncontinued. <a href=\"#fnref-b\""))
+        #expect(!out.contains("[^b]:"))
+        #expect(html("No note [^x] here.").contains("[^x]"))
+        #expect(html("```\n[^a]: in code\n```\n[^a]").contains("<pre><code>[^a]:"))
+    }
+
+    @Test func autolinksAndWikiLinks() {
+        #expect(html("<me@x.io>").contains("<a href=\"mailto:me@x.io\">me@x.io</a>"))
+        #expect(html("write me@x.io now").contains("<a href=\"mailto:me@x.io\">"))
+        #expect(html("see www.apple.com.").contains("<a href=\"https://www.apple.com\">www.apple.com</a>."))
+        #expect(html("[[My Note]]").contains("<a class=\"wikilink\" href=\"My%20Note.md\">My Note</a>"))
+        #expect(html("[[My Note#Part Two|there]]").contains("href=\"My%20Note.md#part-two\">there</a>"))
+        #expect(html("![[pic.png]]").contains("<img src=\"pic.png\""))
+        #expect(html("`[[x]]`").contains("<code>[[x]]</code>"))
+    }
+
+    @Test func richProperties() {
+        let out = html("---\ntags:\n  - a\n  - b\ndone: true\nauthor:\n  name: Ada\nurl: https://x.io\n---\n")
+        #expect(out.contains("<span class=\"chip\">a</span><span class=\"chip\">b</span>"))
+        #expect(out.contains("<input type=\"checkbox\" disabled checked>"))
+        #expect(out.contains("<span class=\"prop-sub\">name</span> Ada"))
+        #expect(out.contains("<a href=\"https://x.io\">https://x.io</a>"))
+    }
+
+    @Test func diffLinesAreTinted() {
+        let out = html("```diff\n@@ -1 +1 @@\n-old\n+new\n same\n```")
+        #expect(out.contains("<span class=\"dl dl-hunk\">@@ -1 +1 @@</span><span class=\"dl dl-del\">-old</span><span class=\"dl dl-add\">+new</span>"))
+    }
+
+    @Test func frontMatterCloseIsNotASetextUnderline() {
+        let ns = "---\ntitle: x\nupdated: 2026\n---\n\nText\n---\n" as NSString
+        let close = ns.range(of: "---", options: [], range: NSRange(location: 4, length: ns.length - 4)).location
+        #expect(HorizontalRuleLayoutManager.setextLevel(underline: ns.lineRange(for: NSRange(location: close, length: 0)), in: ns) == nil)
+        let later = ns.range(of: "---", options: .backwards).location
+        #expect(HorizontalRuleLayoutManager.setextLevel(underline: ns.lineRange(for: NSRange(location: later, length: 0)), in: ns) == 2)
     }
 
     @Test func headingIDsAreUnique() {

@@ -4,14 +4,13 @@ A native macOS Markdown editor. Opens `.md` files from Finder and Quick Look ("O
 
 - Live-styled editing: headings, bold/italic/strike, code, quotes, lists, tasks, links, rules. The file stays plain Markdown.
 - Invisible Details template (default, Format › Template): Inter body in grey at 160% leading, Myeongjo serif headings, 16pt paragraph gaps, after invisibledetails.com. Classic keeps the old look and the Font menu.
-- Tables (Tab / ⇧Tab moves between cells and lines up the columns; Tab past the end adds a row), real checkboxes for tasks, GitHub callouts (`> [!TIP]`), `$…$` / `$$…$$` math, Mermaid diagrams and syntax-coloured code blocks. The preview typesets math (KaTeX) and diagrams (Mermaid) offline, and its checkboxes edit the file.
-- A unified toolbar: outline toggle over the sidebar, a Format menu, preview and Share. Customise it from View › Customize Toolbar.
-- Reading mode (⌥⌘P) that shows the note without Markdown marks, outline sidebar (⌃⌘S), a footer that counts words, characters or reading time (click it).
+- Tables (Tab / ⇧Tab moves between cells and lines up the columns; Tab past the end adds a row), real checkboxes for tasks, GitHub callouts (`> [!TIP]`), `$…$` / `$$…$$` math, Mermaid diagrams and syntax-coloured code blocks. Export and print typeset math (KaTeX) and diagrams (Mermaid) offline.
+- One view for reading and writing: the note shows itself styled, and the line the caret is in shows its Markdown, ready to edit. Outline sidebar (⌃⌘S), a footer that counts words, characters or reading time (click it), and a unified toolbar: outline toggle, Format menu, Share.
 - Smart lists: Return continues a list, Tab/⇧Tab indents, click a `[ ]` to tick it.
 - ⌘-click a link to open it; relative `.md` links open in QuickMD, `#anchor` links jump to the heading.
 - Type `*`, `` ` ``, `[`, `(` … over a selection to wrap it; paste a URL over words to link them; drop files or images in to link them.
 - Autosave, versions, tabs, find & replace, export HTML or PDF, copy as HTML, print the rendered note.
-- CRLF files stay CRLF on disk. Raw HTML in notes is sanitised and the preview runs no script from a note.
+- CRLF files stay CRLF on disk. Raw HTML in notes is sanitised and never runs script from a note.
 - Reloads quietly when another app changes the file and nothing is unsaved.
 - Fonts, text size and light/dark/system theme in the Format and View menus.
 

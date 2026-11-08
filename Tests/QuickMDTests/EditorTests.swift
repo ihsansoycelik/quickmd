@@ -228,4 +228,54 @@ struct EditorTests {
         #expect(color != nil)
         #expect(view.textStorage?.attribute(.backgroundColor, at: 2, effectiveRange: nil) == nil)
     }
+
+    /// A table's cell separators stay dimmed but visible in reading mode
+    /// (like a list bullet, not like a `**`), so an unpadded table written
+    /// by an agent still shows its columns. Only the delimiter row hides —
+    /// its line collapses to a hairline anyway.
+    @Test func tablePipesStayVisibleInReadingMode() {
+        let controller = EditorViewController()
+        _ = controller.view
+        controller.load("| x | y |\n|---|---|\n| 1 | 2 |\n")
+        let storage = controller.textView.textStorage!
+        // Pipes in the header and the data row: "| x | y |" and "| 1 | 2 |".
+        for at in [0, 4, 20, 24] {
+            #expect(storage.attribute(.qmKeepSyntax, at: at, effectiveRange: nil) != nil, "pipe at \(at) should stay visible")
+            #expect(storage.attribute(.qmSyntax, at: at, effectiveRange: nil) == nil, "pipe at \(at) should not hide")
+        }
+        // The delimiter row's pipes stay hideable.
+        #expect(storage.attribute(.qmSyntax, at: 10, effectiveRange: nil) != nil)
+        #expect(storage.attribute(.qmSyntax, at: 14, effectiveRange: nil) != nil)
+    }
+}
+
+@MainActor
+struct TableGridTests {
+    @Test func headingMarkerKeepsEmojiWhole() {
+        let controller = EditorViewController()
+        _ = controller.view
+        controller.load("intro\n\n## 🛒 List\n")
+        let storage = controller.textView.textStorage!
+        let at = (storage.string as NSString).range(of: "🛒").location
+        #expect(storage.attribute(.qmSyntax, at: at, effectiveRange: nil) == nil)
+    }
+
+    @Test func cellRangesTrimAndSkipEscapedPipes() {
+        let ns = "| a | b \\| c | `x|y` |" as NSString
+        let cells = TableGrid.cellRanges(NSRange(location: 0, length: ns.length), in: ns).map { ns.substring(with: $0) }
+        #expect(cells == ["a", "b \\| c", "`x|y`"])
+    }
+
+    @Test func tableIsAGridUntilTheCaretEntersIt() {
+        let controller = EditorViewController()
+        _ = controller.view
+        controller.load("text\n\n| a | b |\n|---|---|\n| 1 | 2 |\n")
+        let view = controller.textView
+        let lm = view.layoutManager as! HorizontalRuleLayoutManager
+        let table = (view.string as NSString).range(of: "| a")
+        view.setSelectedRange(NSRange(location: 0, length: 0))
+        #expect(lm.renderedTable(at: table.location) != nil)
+        view.setSelectedRange(NSRange(location: table.location + 2, length: 0))
+        #expect(lm.renderedTable(at: table.location) == nil)
+    }
 }

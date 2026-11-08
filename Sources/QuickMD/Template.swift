@@ -62,7 +62,7 @@ enum Template: String, CaseIterable {
     /// The site sets 15px and scales its prose to 17px on a desktop.
     var defaultSize: CGFloat {
         switch self {
-        case .looq: return 14
+        case .looq: return 16
         case .invisible: return 17
         case .classic: return 20
         }

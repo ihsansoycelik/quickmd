@@ -24,6 +24,59 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
     /// Outline of an unticked checkbox.
     var checkboxColor: NSColor = .secondaryLabelColor
 
+    // MARK: Table grids
+
+    /// Is the table at this range drawn as a grid (reading mode, caret
+    /// elsewhere)? Set by the editor; nil draws every table as source.
+    var tableIsRendered: ((NSRange) -> Bool)?
+    /// Face the grid's cells read in.
+    var tableBodyFont: NSFont = .systemFont(ofSize: 14) {
+        didSet { gridCache.removeAll() }
+    }
+    private var gridCache: [String: TableGrid] = [:]
+
+    func clearTableGrids() { gridCache.removeAll() }
+
+    /// The whole table block around `location`, when it's drawn as a grid.
+    func renderedTable(at location: Int) -> NSRange? {
+        guard let storage = textStorage, let tableIsRendered, location < storage.length else { return nil }
+        var block = NSRange()
+        guard storage.attribute(.qmTable, at: location, longestEffectiveRange: &block,
+                                in: NSRange(location: 0, length: storage.length)) != nil else { return nil }
+        var hasDelimiter = false
+        storage.enumerateAttribute(.qmTableDelimiter, in: block) { value, _, stop in
+            if value != nil { hasDelimiter = true; stop.pointee = true }
+        }
+        return hasDelimiter && tableIsRendered(block) ? block : nil
+    }
+
+    /// The grid for a table block, fitted to `available` points.
+    func grid(for block: NSRange, available: CGFloat) -> TableGrid? {
+        guard let storage = textStorage else { return nil }
+        let text = (storage.string as NSString).substring(with: block)
+        let key = "\(block.location)|\(Int(available))|\(text)"
+        if let cached = gridCache[key] { return cached }
+        guard let grid = TableGrid.build(storage: storage, range: block, available: available, bodyFont: tableBodyFont) else { return nil }
+        if gridCache.count > 64 { gridCache.removeAll() }
+        gridCache[key] = grid
+        return grid
+    }
+
+    /// Width a grid gets inside a line fragment of `width`.
+    func gridWidth(forFragmentWidth width: CGFloat) -> CGFloat {
+        width - 2 * (textContainers.first?.lineFragmentPadding ?? 5)
+    }
+
+    /// Where the grid of a rendered table sits, in container coordinates.
+    func gridFrame(for block: NSRange) -> (TableGrid, CGPoint)? {
+        let glyphs = glyphRange(forCharacterRange: NSRange(location: block.location, length: 1), actualCharacterRange: nil)
+        guard glyphs.length > 0 else { return nil }
+        let fragment = lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
+        guard let grid = grid(for: block, available: gridWidth(forFragmentWidth: fragment.width)) else { return nil }
+        let padding = textContainers.first?.lineFragmentPadding ?? 5
+        return (grid, CGPoint(x: fragment.minX + padding, y: fragment.minY + TableGrid.margin))
+    }
+
     /// Paint one panel per block — code, math, table, callout — spanning
     /// the line fragments' full width so it tracks the window like the
     /// rule above. An attribute-only `.backgroundColor` would stop at
@@ -66,6 +119,13 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
             }
 
             blocks(.qmTable) { panel, _, range in
+                if renderedTable(at: range.location) != nil {
+                    if let (grid, at) = gridFrame(for: range) {
+                        grid.draw(at: CGPoint(x: at.x + origin.x, y: at.y + origin.y),
+                                  border: panelBorderColor, headerFill: panelFillColor, context: context)
+                    }
+                    return
+                }
                 let path = CGPath(roundedRect: panel.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 8, cornerHeight: 8, transform: nil)
                 context.saveGState()
                 context.addPath(path)
@@ -261,12 +321,34 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
         guard first == 0x3D || first == 0x2D else { return nil }  // = -
         for i in 0..<content.length where ns.character(at: content.location + i) != first { return nil }
         if first == 0x2D, content.length < 2 { return nil }
+        // The `---` closing front matter ends metadata, not a heading.
+        if first == 0x2D, frontMatterClose(in: ns) == lineRange.location { return nil }
         let above = lineContent(ns.lineRange(for: NSRange(location: lineRange.location - 1, length: 0)), in: ns)
         guard above.length > 0, isPlainText(above, in: ns) else { return nil }
         // A rule or another underline above isn't text (checked flat: no recursion down a run of rules).
         let ruleChars: Set<unichar> = [0x2D, 0x3D, 0x2500, 0x2A, 0x5F, 0x20]
         if (0..<above.length).allSatisfy({ ruleChars.contains(ns.character(at: above.location + $0)) }) { return nil }
         return first == 0x3D ? 1 : 2
+    }
+
+    /// Where the line closing a front matter block starts (`---`, then
+    /// `key: value` lines, then `---` or `...`), or nil without one.
+    static func frontMatterClose(in ns: NSString) -> Int? {
+        guard ns.length > 4, ns.hasPrefix("---") else { return nil }
+        let first = ns.lineRange(for: NSRange(location: 0, length: 0))
+        guard lineContent(first, in: ns).length == 3, NSMaxRange(first) < ns.length else { return nil }
+        var location = NSMaxRange(first)
+        let second = lineContent(ns.lineRange(for: NSRange(location: location, length: 0)), in: ns)
+        guard ns.substring(with: second).range(of: #"^[A-Za-z0-9_-]+:"#, options: .regularExpression) != nil else { return nil }
+        var count = 0
+        while location < ns.length, count < 300 {
+            let line = ns.lineRange(for: NSRange(location: location, length: 0))
+            let text = ns.substring(with: lineContent(line, in: ns))
+            if text == "---" || text == "..." { return line.location }
+            location = NSMaxRange(line)
+            count += 1
+        }
+        return nil
     }
 
     /// Convenience for tests — takes a Swift String, treats the whole

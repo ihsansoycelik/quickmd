@@ -183,7 +183,6 @@ enum MainMenu {
 
     private static func viewMenu(_ app: AppDelegate) -> NSMenu {
         let menu = NSMenu(title: "View")
-        menu.addItem(item("Edit Markdown", #selector(DocumentWindowController.toggleReadingMode(_:)), "p", [.command, .option]))
         menu.addItem(item("Show Sidebar", #selector(DocumentWindowController.toggleOutline(_:)), "s", [.command, .control]))
         menu.addItem(item("Footer", #selector(AppDelegate.toggleStatusBar(_:)), target: app))
         menu.addItem(item("Readable Line Width", #selector(AppDelegate.toggleReadableWidth(_:)), target: app))

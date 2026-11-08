@@ -16,23 +16,250 @@ enum MarkdownHTML {
     final class Context {
         var ids: Set<String> = []
         let interactive: Bool
-        init(interactive: Bool) { self.interactive = interactive }
+        let lineMarks: Bool
+        init(interactive: Bool, lineMarks: Bool = false) {
+            self.interactive = interactive
+            self.lineMarks = lineMarks
+        }
     }
 
     /// With `interactive`, task checkboxes are live and carry their
     /// source line as `data-task` (the preview); otherwise they're disabled.
-    static func render(_ markdown: String, interactive: Bool = false) -> String {
+    /// With `lineMarks`, each top-level block carries its first source
+    /// line as `data-line`, so the live preview can follow the editor.
+    /// Without `properties`, front matter is dropped instead of shown.
+    static func render(_ markdown: String, interactive: Bool = false, lineMarks: Bool = false, properties showsProperties: Bool = true) -> String {
         let normalized = markdown
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
         var lines = stripControls(normalized).components(separatedBy: "\n")
         var origin = Array(lines.indices)
-        // YAML front matter is metadata for other tools, not prose.
+        // YAML front matter is metadata, not prose: shown as a quiet
+        // table of properties above the note.
+        var head = ""
         if let end = frontMatterEnd(lines) {
+            if showsProperties { head = properties(Array(lines[1..<end]), lineMarks: lineMarks) }
             lines.removeFirst(end + 1)
             origin.removeFirst(end + 1)
         }
-        return renderBlocks(lines, origin, tight: false, context: Context(interactive: interactive))
+        let context = Context(interactive: interactive, lineMarks: lineMarks)
+        let notes = takeFootnotes(&lines, &origin)
+        let body = renderBlocks(lines, origin, tight: false, context: context, top: true)
+        return head + (notes.isEmpty ? body : footnoted(body, notes, context: context))
+    }
+
+    /// A diff, one block per line, tinted by what the line does.
+    private static func diffLines(_ source: String) -> String {
+        source.components(separatedBy: "\n").map { line -> String in
+            let kind = line.hasPrefix("+++") || line.hasPrefix("---") ? "meta"
+                : line.hasPrefix("+") ? "add" : line.hasPrefix("-") ? "del" : line.hasPrefix("@@") ? "hunk" : "same"
+            return "<span class=\"dl dl-\(kind)\">\(line.isEmpty ? " " : escape(line))</span>"
+        }.joined()
+    }
+
+    // MARK: Footnotes
+
+    private struct Footnote {
+        let id: String
+        var lines: [String]
+        var origin: [Int]
+    }
+
+    private static let footnoteDefinition = regex(#"^ {0,3}\[\^([^\]\s]+)\]:[ \t]?(.*)$"#)
+
+    /// Lifts `[^id]: text` definitions (and their indented lines) out of
+    /// the note, outside code fences.
+    private static func takeFootnotes(_ lines: inout [String], _ origin: inout [Int]) -> [Footnote] {
+        guard lines.contains(where: { $0.contains("[^") }) else { return [] }
+        var notes: [Footnote] = []
+        var keptLines: [String] = []
+        var keptOrigin: [Int] = []
+        var fence: Fence?
+        var i = 0
+        while i < lines.count {
+            let line = lines[i]
+            if let open = fence {
+                if closes(line, open) { fence = nil }
+            } else if let opened = openingFence(line) {
+                fence = opened
+            } else if let match = groups(footnoteDefinition, line) {
+                var note = Footnote(id: match[1], lines: [match[2]], origin: [origin[i]])
+                i += 1
+                while i < lines.count {
+                    let next = lines[i]
+                    let blank = next.trimmingCharacters(in: .whitespaces).isEmpty
+                    if blank, i + 1 < lines.count, lines[i + 1].hasPrefix("    ") || lines[i + 1].hasPrefix("\t") {
+                        note.lines.append(""); note.origin.append(origin[i]); i += 1; continue
+                    }
+                    guard !blank, groups(footnoteDefinition, next) == nil else { break }
+                    let indented = next.hasPrefix("    ") || next.hasPrefix("\t")
+                    // A lazy line continues the note's paragraph.
+                    guard indented || !(note.lines.last ?? "").isEmpty else { break }
+                    note.lines.append(indented ? String(next.dropFirst(next.hasPrefix("\t") ? 1 : 4)) : next)
+                    note.origin.append(origin[i])
+                    i += 1
+                }
+                if !notes.contains(where: { $0.id == note.id }) { notes.append(note) }
+                continue
+            }
+            keptLines.append(line)
+            keptOrigin.append(origin[i])
+            i += 1
+        }
+        lines = keptLines
+        origin = keptOrigin
+        return notes
+    }
+
+    private static func footnoteAnchor(_ id: String) -> String {
+        id.lowercased().replacingOccurrences(of: #"[^\p{L}\p{N}_-]"#, with: "-", options: .regularExpression)
+    }
+
+    /// Numbers `[^id]` references by first use, outside code, and lists
+    /// the notes at the end with a way back to each.
+    private static func footnoted(_ body: String, _ notes: [Footnote], context: Context) -> String {
+        let known = Set(notes.map(\.id))
+        var order: [String] = []
+        var uses: [String: Int] = [:]
+        let protected = regex(#"(?s)<(pre|code)\b.*?</\1>"#)
+        let reference = regex(#"\[\^([^\]\s]+)\]"#)
+        var out = ""
+        var last = body.startIndex
+        func link(_ text: String) -> String {
+            replace(text, reference) { m in
+                guard known.contains(m[1]) else { return m[0] }
+                if !order.contains(m[1]) { order.append(m[1]) }
+                let n = order.firstIndex(of: m[1])! + 1
+                uses[m[1], default: 0] += 1
+                let anchor = footnoteAnchor(m[1])
+                let refID = uses[m[1]] == 1 ? "fnref-\(anchor)" : "fnref-\(anchor)-\(uses[m[1]]!)"
+                return "<sup class=\"fnref\"><a href=\"#fn-\(anchor)\" id=\"\(refID)\">\(n)</a></sup>"
+            }
+        }
+        for match in protected.matches(in: body, range: NSRange(body.startIndex..., in: body)) {
+            guard let range = Range(match.range, in: body) else { continue }
+            out += link(String(body[last..<range.lowerBound])) + body[range]
+            last = range.upperBound
+        }
+        out += link(String(body[last...]))
+        // Notes never referenced still show, after the others.
+        for note in notes where !order.contains(note.id) { order.append(note.id) }
+        var list = "<section class=\"footnotes\">\n<ol>\n"
+        for id in order {
+            guard let note = notes.first(where: { $0.id == id }) else { continue }
+            let anchor = footnoteAnchor(id)
+            var inner = renderBlocks(note.lines, note.origin, tight: false, context: context)
+            let back = uses[id] != nil ? " <a href=\"#fnref-\(anchor)\" class=\"fnback\" aria-label=\"Back to text\">↩︎</a>" : ""
+            if inner.hasSuffix("</p>\n") {
+                inner = String(inner.dropLast(5)) + back + "</p>\n"
+            } else {
+                inner += back
+            }
+            list += "<li id=\"fn-\(anchor)\">\n\(inner)</li>\n"
+        }
+        return out + list + "</ol>\n</section>\n"
+    }
+
+    /// Front matter as rows of icon, key and value: lists (`[a, b]` or
+    /// `- a` lines) as chips, true/false as a box, a nested map as
+    /// `key: value` pairs.
+    static func properties(_ yaml: [String], lineMarks: Bool = false) -> String {
+        enum Value { case text(String), list([String]), map([(String, String)]) }
+        var rows: [(key: String, value: Value)] = []
+        for line in yaml {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
+            let indented = line.first == " " || line.first == "\t"
+            if trimmed == "-" || trimmed.hasPrefix("- "), let last = rows.indices.last {
+                let item = unquote(String(trimmed.dropFirst(1)).trimmingCharacters(in: .whitespaces))
+                switch rows[last].value {
+                case .list(let items): rows[last].value = .list(items + [item])
+                case .text(let t) where t.isEmpty: rows[last].value = .list([item])
+                default: break
+                }
+                continue
+            }
+            guard let colon = trimmed.firstIndex(of: ":") else { continue }
+            let key = unquote(String(trimmed[..<colon]).trimmingCharacters(in: .whitespaces))
+            var value = String(trimmed[trimmed.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+            guard !key.isEmpty else { continue }
+            if indented, let last = rows.indices.last {
+                // A nested map under the key above.
+                switch rows[last].value {
+                case .map(let pairs): rows[last].value = .map(pairs + [(key, unquote(value))])
+                case .text(let t) where t.isEmpty: rows[last].value = .map([(key, unquote(value))])
+                default: break
+                }
+                continue
+            }
+            if value.hasPrefix("["), value.hasSuffix("]") {
+                value = String(value.dropFirst().dropLast())
+                let items = value.split(separator: ",").map { unquote($0.trimmingCharacters(in: .whitespaces)) }.filter { !$0.isEmpty }
+                rows.append((key, .list(items)))
+            } else {
+                rows.append((key, .text(unquote(value))))
+            }
+        }
+        guard !rows.isEmpty else { return "" }
+        let items = rows.map { row -> String in
+            let icon: String
+            let html: String
+            switch row.value {
+            case .list(let items):
+                icon = Icon.list
+                html = items.map { "<span class=\"chip\">\(escape($0))</span>" }.joined()
+            case .map(let pairs):
+                icon = Icon.text
+                html = pairs.map { "<span class=\"prop-sub\">\(escape($0.0))</span> \(escape($0.1))" }.joined(separator: "<br>")
+            case .text(let text):
+                let lower = text.lowercased()
+                if lower == "true" || lower == "false" {
+                    icon = Icon.checkbox
+                    html = "<input type=\"checkbox\" disabled\(lower == "true" ? " checked" : "")>"
+                } else if text.range(of: #"^\d{4}-\d{2}-\d{2}"#, options: .regularExpression) != nil {
+                    icon = Icon.calendar
+                    html = escape(text)
+                } else if text.range(of: #"^https?://\S+$"#, options: .regularExpression) != nil {
+                    icon = Icon.link
+                    html = "<a href=\"\(escape(safeURL(text)))\">\(escape(text))</a>"
+                } else {
+                    icon = Icon.text
+                    html = text.isEmpty ? "<span class=\"prop-empty\">Empty</span>" : escape(text)
+                }
+            }
+            return "<div class=\"prop\"><span class=\"prop-key\">\(icon)<span>\(escape(row.key))</span></span>"
+                + "<span class=\"prop-value\">\(html)</span></div>"
+        }
+        return "<div class=\"properties\"\(lineMarks ? " data-line=\"0\"" : "")>\n\(items.joined(separator: "\n"))\n</div>\n"
+    }
+
+    private static func unquote(_ value: String) -> String {
+        guard value.count >= 2, let first = value.first, first == "\"" || first == "'", value.last == first else { return value }
+        return String(value.dropFirst().dropLast())
+    }
+
+    /// Small line icons drawn in the text colour, for page furniture.
+    enum Icon {
+        private static func svg(_ paths: String) -> String {
+            "<svg class=\"icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" "
+                + "stroke-linecap=\"round\" stroke-linejoin=\"round\">\(paths)</svg>"
+        }
+        static let text = svg("<path d=\"M4 7h16M4 12h16M4 17h10\"/>")
+        static let calendar = svg("<rect x=\"4\" y=\"5\" width=\"16\" height=\"15\" rx=\"2\"/><path d=\"M4 10h16M9 3v4M15 3v4\"/>")
+        static let copy = svg("<rect x=\"8\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\"/><path d=\"M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2\"/>")
+        static let list = svg("<path d=\"M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01\"/>")
+        static let checkbox = svg("<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"3\"/><path d=\"M8.5 12.5l2.5 2.5 4.5-5\"/>")
+        static let link = svg("<path d=\"M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1\"/>")
+        static let check = svg("<path d=\"M5 12.5l4.5 4.5L19 7.5\"/>")
+        static func callout(_ kind: CalloutKind) -> String {
+            switch kind {
+            case .note: return svg("<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v5M12 7.5v.5\"/>")
+            case .tip: return svg("<path d=\"M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1.1 1.3 1.1 2.2h5c0-.9.5-1.7 1.1-2.2A6 6 0 0 0 12 3z\"/>")
+            case .important: return svg("<path d=\"M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4z\"/><path d=\"M12 7v4M12 14v.5\"/>")
+            case .warning: return svg("<path d=\"M12 3.5L2.5 20h19z\"/><path d=\"M12 10v4.5M12 17.2v.3\"/>")
+            case .caution: return svg("<path d=\"M8.2 3h7.6L21 8.2v7.6L15.8 21H8.2L3 15.8V8.2z\"/><path d=\"M12 8v5M12 16v.5\"/>")
+            }
+        }
     }
 
     /// Index of the closing `---` of a front matter block that opens the
@@ -49,14 +276,18 @@ enum MarkdownHTML {
     private static let atxPattern = regex(#"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$"#)
     private static let thematicPattern = regex(#"^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$"#)
     private static let listPattern = regex(#"^([ \t]*)([-*+]|(\d{1,9})[.)])([ \t]+|$)(.*)$"#)
-    private static let htmlBlockPattern = regex(#"^[ \t]*<(?:/?[A-Za-z]|!)"#)
+    private static let htmlBlockPattern = regex(#"^[ \t]*<(?:/?[A-Za-z][A-Za-z0-9-]*(?:[\s/>]|$)|!)"#)
 
     /// `origin[k]` is the source line of `lines[k]`, so a task can name
     /// the line it came from however deeply it's nested.
-    private static func renderBlocks(_ lines: [String], _ origin: [Int], tight: Bool, context: Context) -> String {
+    private static func renderBlocks(_ lines: [String], _ origin: [Int], tight: Bool, context: Context, top: Bool = false) -> String {
         var out = ""
         var paragraph: [String] = []
+        var paragraphLine = 0
         var i = 0
+        let marks = top && context.lineMarks
+        /// Where the block being rendered starts in `out`, in UTF-8 bytes.
+        var blockStart = 0
 
         func flush() {
             guard !paragraph.isEmpty else { return }
@@ -67,8 +298,9 @@ enum MarkdownHTML {
                 return line
             }.joined(separator: "\n")
             let body = inline(text)
-            out += tight ? body + "\n" : "<p>\(body)</p>\n"
+            out += tight ? body + "\n" : marks ? "<p data-line=\"\(paragraphLine)\">\(body)</p>\n" : "<p>\(body)</p>\n"
             paragraph.removeAll()
+            blockStart = out.utf8.count
         }
 
         while i < lines.count {
@@ -76,6 +308,10 @@ enum MarkdownHTML {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
             if trimmed.isEmpty { flush(); i += 1; continue }
+
+            let blockLine = origin[i]
+            blockStart = out.utf8.count
+            defer { if marks { markLine(&out, from: blockStart, line: blockLine) } }
 
             // Fenced code, closed only by the same fence or a longer one.
             if let fence = openingFence(line) {
@@ -95,7 +331,10 @@ enum MarkdownHTML {
                     out += "<div class=\"math math-display\">\(escape(source))</div>\n"
                 default:
                     let cls = lang.isEmpty ? "" : " class=\"language-\(escape(lang))\""
-                    out += "<pre><code\(cls)>\(SyntaxHighlighter.html(source, language: lang, escape: escape))</code></pre>\n"
+                    // A bar over the code: its language, and a copy button.
+                    out += "<div class=\"codeblock\"><div class=\"codebar\"><span class=\"codelang\">\(escape(lang.lowercased()))</span>"
+                        + "<button class=\"copy\" type=\"button\" title=\"Copy\" aria-label=\"Copy code\">\(Icon.copy)\(Icon.check)</button></div>"
+                        + "<pre><code\(cls)>\(lang.lowercased() == "diff" ? diffLines(source) : SyntaxHighlighter.html(source, language: lang, escape: escape))</code></pre></div>\n"
                 }
                 continue
             }
@@ -170,15 +409,25 @@ enum MarkdownHTML {
                     i += 1
                 }
                 // GitHub callout: `> [!TIP]` on the first line.
+                // Obsidian's forms too: other kinds, a title after the
+                // marker, and `-`/`+` for a callout that folds (closed/open).
                 if let first = quoted.first,
-                   let match = first.firstMatch(of: /^\s*\[!([A-Za-z]+)\]\s*(.*)$/),
+                   let match = first.firstMatch(of: /^\s*\[!([A-Za-z-]+)\]([+-]?)\s*(.*)$/),
                    let kind = CalloutKind(marker: String(match.1)) {
-                    var body = Array(quoted.dropFirst())
-                    var bodyOrigin = Array(quotedOrigin.dropFirst())
-                    let rest = String(match.2)
-                    if !rest.isEmpty { body.insert(rest, at: 0); bodyOrigin.insert(quotedOrigin[0], at: 0) }
-                    out += "<div class=\"callout callout-\(kind.rawValue)\">\n<p class=\"callout-title\">\(kind.title)</p>\n"
-                        + renderBlocks(body, bodyOrigin, tight: false, context: context) + "</div>\n"
+                    let body = Array(quoted.dropFirst())
+                    let bodyOrigin = Array(quotedOrigin.dropFirst())
+                    let marker = String(match.1).lowercased()
+                    let given = String(match.3).trimmingCharacters(in: .whitespaces)
+                    let title = given.isEmpty ? inline(marker.prefix(1).uppercased() + marker.dropFirst()) : inline(given)
+                    let inner = renderBlocks(body, bodyOrigin, tight: false, context: context)
+                    let cls = "callout callout-\(kind.rawValue)"
+                    switch match.2 {
+                    case "-", "+":
+                        out += "<details class=\"\(cls)\"\(match.2 == "+" ? " open" : "")>\n<summary class=\"callout-title\">"
+                            + "\(Icon.callout(kind))\(title)</summary>\n\(inner)</details>\n"
+                    default:
+                        out += "<div class=\"\(cls)\">\n<p class=\"callout-title\">\(Icon.callout(kind))\(title)</p>\n\(inner)</div>\n"
+                    }
                     continue
                 }
                 out += "<blockquote>\n\(renderBlocks(quoted, quotedOrigin, tight: false, context: context))</blockquote>\n"
@@ -206,12 +455,18 @@ enum MarkdownHTML {
                     }
                     return "<tr>\(items.joined())</tr>\n"
                 }
-                out += "<table>\n<thead>\n" + row(line, tag: "th") + "</thead>\n<tbody>\n"
+                var body = ""
+                var longest = cells(line).map(\.count).max() ?? 0
                 i += 2
                 while i < lines.count, lines[i].contains("|"), !lines[i].trimmingCharacters(in: .whitespaces).isEmpty {
-                    out += row(lines[i], tag: "td"); i += 1
+                    longest = max(longest, cells(lines[i]).map { $0.trimmingCharacters(in: .whitespaces).count }.max() ?? 0)
+                    body += row(lines[i], tag: "td"); i += 1
                 }
-                out += "</tbody>\n</table>\n"
+                // Short cells stay on one line; a table too wide for the
+                // column scrolls sideways in its own box.
+                let compact = longest <= 24 ? " class=\"compact\"" : ""
+                out += "<div class=\"table-wrap\"><table\(compact)>\n<thead>\n" + row(line, tag: "th") + "</thead>\n<tbody>\n"
+                    + body + "</tbody>\n</table></div>\n"
                 continue
             }
 
@@ -248,11 +503,25 @@ enum MarkdownHTML {
                 continue
             }
 
+            if paragraph.isEmpty { paragraphLine = origin[i] }
             paragraph.append(line)
             i += 1
         }
         flush()
         return out
+    }
+
+    /// Adds `data-line` to the first tag written since `offset`. The
+    /// insertion is near the end of `out`, so it costs the block, not the note.
+    private static func markLine(_ out: inout String, from offset: Int, line: Int) {
+        let utf8 = out.utf8
+        guard offset < utf8.count else { return }
+        let start = utf8.index(utf8.startIndex, offsetBy: offset)
+        guard out[start] == "<" else { return }
+        var end = out.index(after: start)
+        while end < out.endIndex, out[end].isASCII, out[end].isLetter || out[end].isNumber { end = out.index(after: end) }
+        guard end > out.index(after: start), end < out.endIndex, out[end] == " " || out[end] == ">" else { return }
+        out.insert(contentsOf: " data-line=\"\(line)\"", at: end)
     }
 
     private struct ListItem {
@@ -458,6 +727,10 @@ enum MarkdownHTML {
         s = replace(s, #"(?<![\w$])\$([^\s$](?:[^$\n]*?[^\s$\\])?)\$(?![\d$])"#) { m in
             keep("<span class=\"math\">\(escape(m[1]))</span>")
         }
+        // Emoji shortcodes: `:tada:` → 🎉; unknown names stay as written.
+        s = replace(s, #"(?<![\w:/]):([a-z0-9_+-]*[a-z][a-z0-9_+-]*):(?![\w:])"#) { m in
+            Emoji.shortcodes[m[1]] ?? m[0]
+        }
         // Other backslash escapes.
         s = replace(s, #"\\([\\*_{}\[\]()#+\-.!|~<>])"#) { m in keep(escape(m[1])) }
         // A backslash at the end of a line is a hard break.
@@ -465,6 +738,27 @@ enum MarkdownHTML {
         // Autolinks.
         s = replace(s, #"<(https?://[^>\s]+)>"#) { m in
             keep("<a href=\"\(escape(safeURL(m[1])))\">\(escape(m[1]))</a>")
+        }
+        s = replace(s, #"<([A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})>"#) { m in
+            keep("<a href=\"mailto:\(escape(m[1]))\">\(escape(m[1]))</a>")
+        }
+        // Wiki links: `[[Note]]`, `[[Note|label]]`, `[[Note#Heading]]`,
+        // to a note beside this one.
+        s = replace(s, #"(!?)\[\[([^\[\]|\n]+?)(?:\|([^\[\]\n]+))?\]\]"#) { m in
+            let target = m[2].trimmingCharacters(in: .whitespaces)
+            let parts = target.components(separatedBy: "#")
+            var file = parts[0]
+            let label = m[3].isEmpty ? target.replacingOccurrences(of: "#", with: " › ") : m[3]
+            if !file.isEmpty, (file as NSString).pathExtension.isEmpty { file += ".md" }
+            let path = file.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file
+            let fragment = parts.count > 1 ? "#" + slug(parts[1...].joined(separator: "#")) : ""
+            if m[1] == "!" {
+                let ext = (file as NSString).pathExtension.lowercased()
+                if ["png", "jpg", "jpeg", "gif", "webp", "svg", "heic", "avif"].contains(ext) {
+                    return keep("<img src=\"\(escape(path))\" alt=\"\(escape(m[3].isEmpty ? parts[0] : m[3]))\">")
+                }
+            }
+            return keep("<a class=\"wikilink\" href=\"\(escape(path + fragment))\">\(escape(label))</a>")
         }
         // Inline HTML tags pass through, sanitised.
         s = replace(s, #"</?[A-Za-z][A-Za-z0-9-]*(?:[^<>"']|"[^"]*"|'[^']*')*>"#) { m in keep(sanitize(m[0])) }
@@ -475,6 +769,12 @@ enum MarkdownHTML {
         s = links(s, keep)
         s = replace(s, #"(?<![\"'=])\bhttps?://[^\s<]*[^\s<.,;:!?)\]'\"*]"#) { m in
             keep("<a href=\"\(m[0])\">\(m[0])</a>")
+        }
+        s = replace(s, #"(?<![\w/.@\"'=-])www\.[A-Za-z0-9-]+\.[^\s<]*[^\s<.,;:!?)\]'\"*]"#) { m in
+            keep("<a href=\"https://\(m[0])\">\(m[0])</a>")
+        }
+        s = replace(s, #"(?<![\w.+/:%-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])"#) { m in
+            keep("<a href=\"mailto:\(m[0])\">\(m[0])</a>")
         }
         s = emphasis(s)
         // Restore stashed fragments; they may nest, so repeat (a few
@@ -631,7 +931,7 @@ enum MarkdownHTML {
     private static let tokenPattern = regex(#"(<!--[\s\S]*?-->)|(</?)([A-Za-z][A-Za-z0-9:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|(<)"#)
     private static let droppedPattern = regex("(?i)^(?:\(dropped))$")
     // HTML separates attributes with a slash or a closing quote too: `<img/onerror=…>`.
-    private static let handlerPattern = regex(#"(?i)(?<=[\s/"'])(?:on[a-z]+|srcdoc|formaction|data-task)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?"#)
+    private static let handlerPattern = regex(#"(?i)(?<=[\s/"'])(?:on[a-z]+|srcdoc|formaction|data-task|data-line|data-key)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?"#)
     private static let urlAttributePattern = regex(#"(?i)(?<=[\s/"'])((?:href|src|xlink:href|action|poster|background|lowsrc|dynsrc|cite|data|ping)\s*=\s*)("[^"]*"|'[^']*'|[^\s>"']+)"#)
 
     /// Raw HTML from a note, minus anything that could run code or
@@ -833,39 +1133,119 @@ enum MarkdownHTML {
         // Looq's rules come after the shared ones, so they win.
         var lateCSS = ""
         if looq {
-            // Looq's Markdown preview stylesheet with its default values.
+            // A reading page modelled on MarkView: a centred column, quiet
+            // properties, code under a bar, gridded tables, open callouts.
+            let v: [String: String] = dark
+                ? ["border": "#2E333D", "panel": "#1C2026", "icode": "#1A1E23", "icodeBorder": "#2A2F37",
+                   "codeBg": "#1E1E1E", "codeBar": "#202020", "codeBorder": "#333333", "codeLabel": "#8C8C8C",
+                   "faint": "#5F646F", "accent": "#4E80EE", "quote": "#3A3F48"]
+                : ["border": "#D8DEE4", "panel": "#F6F8FA", "icode": "#F3F4F6", "icodeBorder": "#E1E4E8",
+                   "codeBg": "#F6F8FA", "codeBar": "#EFF1F3", "codeBorder": "#D8DEE4", "codeLabel": "#6E7781",
+                   "faint": "#8C959F", "accent": "#2F6FEB", "quote": "#D0D7DE"]
             templateCSS = """
-            :root { --bg: \(lq["bg"]!); --text: \(lq["text"]!); --heading: \(lq["heading"]!); --secondary: \(lq["secondary"]!);
-              --link: \(lq["link"]!); --code-bg: \(lq["codeBg"]!); --body-size: \(size)px; }
+            :root { --bg: \(lq["bg"]!); --text: \(lq["text"]!); --heading: \(lq["heading"]!); --muted: \(lq["secondary"]!);
+              --faint: \(v["faint"]!); --link: \(lq["link"]!); --border: \(v["border"]!); --panel: \(v["panel"]!);
+              --icode: \(v["icode"]!); --icode-border: \(v["icodeBorder"]!); --code-bg: \(v["codeBg"]!);
+              --code-bar: \(v["codeBar"]!); --code-border: \(v["codeBorder"]!); --code-label: \(v["codeLabel"]!);
+              --accent: \(v["accent"]!); --quote: \(v["quote"]!); --body-size: \(size)px; }
             """
             lateCSS = """
-            body { max-width: none; padding: 28px 32px 40px; color: var(--text);
-              font-family: \(fontFamily), -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
-              font-size: var(--body-size); font-weight: 400; line-height: 1.4; -webkit-font-smoothing: auto; }
-            h1, h2, h3, h4, h5, h6 { color: var(--heading); line-height: 1.2; margin: 1.5em 0 0.55em;\(headingFamily.map { " font-family: \($0), -apple-system, sans-serif;" } ?? "") }
-            h1 { font-size: 2.25em; margin-top: 0; } h2 { font-size: 1.6em; } h3 { font-size: 1.32em; } h4, h5, h6 { font-size: 1em; }
-            p, ul, ol, blockquote, table, pre, figure { margin: 0 0 8px; }
-            ul, ol { padding-left: 1.6em; } li + li { margin-top: 0.25em; } li > p { margin-bottom: 0.4em; }
+            body { max-width: 780px; box-sizing: border-box; padding: 48px 40px 120px;
+              color: var(--text); font-family: \(fontFamily), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+              font-size: var(--body-size); font-weight: 400; line-height: 1.65; }
+            h1, h2, h3, h4, h5, h6 { color: var(--heading); font-weight: 700; line-height: 1.25; letter-spacing: -0.012em;
+              margin: 1.7em 0 0.5em;\(headingFamily.map { " font-family: \($0), -apple-system, sans-serif;" } ?? "") }
+            h1 { font-size: 2.1em; letter-spacing: -0.02em; margin-top: 1.2em; } h2 { font-size: 1.55em; }
+            h3 { font-size: 1.25em; } h4 { font-size: 1.05em; } h5, h6 { font-size: 1em; } h6 { color: var(--muted); }
+            p, ul, ol, dl { margin: 0 0 0.85em; }
+            strong { color: var(--heading); font-weight: 650; }
             a { color: var(--link); text-decoration: none; } a:hover { text-decoration: underline; }
-            blockquote { margin-left: 0; padding: 0.2em 0 0.2em 1em; color: color-mix(in srgb, var(--text) 65%, var(--secondary));
-              border-left: 3px solid color-mix(in srgb, var(--secondary) 70%, transparent); }
-            hr { border: 0; border-top: 1px solid color-mix(in srgb, var(--secondary) 35%, transparent); margin: 1.5em 0; }
-            code, pre { font-family: ui-monospace, "SF Mono", Menlo, Monaco, monospace; font-size: 13px; }
-            :not(pre) > code { background: var(--code-bg); border-radius: 6px; padding: 0.12em 0.35em; font-size: 0.92em; box-shadow: none; color: inherit; }
-            pre { background: var(--code-bg); border-radius: 8px; padding: 14px 16px; line-height: 1.4;
-              font-size: max(calc(var(--body-size) - 2px), 11px); white-space: pre; overflow-x: auto; }
-            pre code { color: var(--text); }
-            table { width: 100%; border: 0.5px solid color-mix(in srgb, var(--secondary) 28%, transparent); border-collapse: separate;
-              border-spacing: 0; overflow: hidden; border-radius: 6px; }
-            th, td { border: 0; border-bottom: 0.5px solid color-mix(in srgb, var(--secondary) 28%, transparent);
-              border-right: 0.5px solid color-mix(in srgb, var(--secondary) 28%, transparent); padding: 0.6em 0.8em; text-align: left; vertical-align: top; }
-            tr > *:last-child { border-right: 0; } table tr:last-child > * { border-bottom: 0; }
-            th { background: color-mix(in srgb, var(--code-bg) 85%, var(--bg)); color: var(--heading); font-weight: 600; }
-            img { display: block; height: auto; margin: 0.5em auto; }
-            mark { background: color-mix(in srgb, var(--link) 22%, transparent); color: var(--text); padding: 0.1em 0.25em; border-radius: 3px; }
-            li.task-list-item:has(> input:checked) { color: color-mix(in srgb, var(--text) 50%, var(--secondary)); }
-            .callout { border-left-width: 4px; padding: 0.6em 1em; background: none; border-radius: 0; }
-            .katex { color: var(--text); }
+            ul, ol { padding-left: 2.1em; } li + li { margin-top: 0.3em; } li > ul, li > ol { margin: 0.3em 0 0; }
+            li > p { margin-bottom: 0.4em; } li::marker { color: var(--text); }
+            blockquote { margin: 0 0 1em; padding: 0.1em 0 0.1em 1.25em; border-left: 3px solid var(--quote); color: var(--muted); }
+            blockquote > :last-child { margin-bottom: 0; }
+            hr { border: 0; border-top: 1px solid var(--border); margin: 2.2em 0; }
+            code, pre, kbd { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; }
+            :not(pre) > code { font-size: 0.86em; background: var(--icode); border: 1px solid var(--icode-border);
+              border-radius: 5px; padding: 0.12em 0.4em; color: var(--heading); box-shadow: none; white-space: break-spaces; }
+            kbd { font-size: 0.82em; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 0.05em 0.4em; }
+            .codeblock { margin: 1.2em 0 1.5em; background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 9px; overflow: hidden; }
+            .codebar { display: flex; align-items: center; justify-content: space-between; height: 2.1em; padding: 0 0.7em 0 1.15em;
+              background: var(--code-bar); border-bottom: 1px solid var(--code-border); }
+            .codelang { font: 0.78em ui-monospace, "SF Mono", Menlo, monospace; color: var(--code-label); letter-spacing: 0.02em; }
+            .copy { display: grid; place-items: center; width: 1.8em; height: 1.8em; padding: 0; border: 0; border-radius: 5px;
+              background: none; color: var(--code-label); cursor: pointer; }
+            .copy:hover { background: color-mix(in srgb, var(--code-label) 16%, transparent); color: var(--text); }
+            .copy .icon { width: 1.05em; height: 1.05em; grid-area: 1 / 1; } .copy .icon + .icon { display: none; }
+            .copy.copied .icon:first-child { display: none; } .copy.copied .icon + .icon { display: block; color: #3FB950; }
+            .codeblock pre { margin: 0; background: none; border-radius: 0; padding: 1.1em 1.15em 1.2em; overflow-x: auto;
+              font-size: 0.86em; line-height: 1.7; white-space: pre; }
+            .codeblock pre code { color: var(--text); }
+            pre { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 9px; font-size: 0.86em; line-height: 1.7; }
+            .codeblock pre, pre.mermaid { border: 0; }
+            .table-wrap { margin: 1.2em 0 1.5em; overflow-x: auto; border: 1px solid var(--border); }
+            .table-wrap table { margin: 0; border: 0; border-radius: 0; overflow: visible; width: 100%; border-collapse: collapse; }
+            th, td { border: 0; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+              padding: 0.55em 0.95em; text-align: left; vertical-align: top; }
+            tr > :last-child { border-right: 0; } tbody tr:last-child > * { border-bottom: 0; }
+            th { background: var(--panel); color: var(--heading); font-weight: 600; }
+            table.compact th, table.compact td { white-space: nowrap; }
+            img { display: block; height: auto; margin: 1em auto; border-radius: 6px; }
+            mark { background: color-mix(in srgb, #E3B341 30%, transparent); color: var(--heading); padding: 0.05em 0.2em; border-radius: 3px; }
+            ul.contains-task-list { list-style: none; padding-left: 1.6em; }
+            ul.contains-task-list ul.contains-task-list { padding-left: 1.9em; }
+            ul.contains-task-list > li + li { margin-top: 0.4em; }
+            li.task-list-item input { width: 1.2em; height: 1.2em; margin: 0 0.75em 0 0; vertical-align: -0.22em;
+              border: 1.5px solid var(--muted); border-radius: 0.3em; }
+            li.task-list-item input:checked { background: var(--accent); border-color: var(--accent); }
+            li.task-list-item input:checked::after { width: 0.5em; height: 0.27em; border-width: 0 0 0.13em 0.13em; }
+            li.task-list-item:has(> input:checked) { color: var(--text); text-decoration: none; }
+            .callout { margin: 1.1em 0 1.3em; padding: 0.15em 0 0.15em 1.25em; border-left: 3px solid var(--c); border-radius: 0; background: none; }
+            .callout-title { display: flex; align-items: center; gap: 0.45em; margin: 0 0 0.45em; font-size: 1em; font-weight: 600; color: var(--c); }
+            .callout-title .icon { width: 1.05em; height: 1.05em; flex: none; }
+            .properties { margin: 0 0 2.4em; padding-bottom: 1.5em; border-bottom: 1px solid var(--border); font-size: 0.875em; }
+            .prop { display: grid; grid-template-columns: minmax(8em, 16.5em) 1fr; align-items: baseline; padding: 0.45em 0; }
+            .prop-key { display: flex; align-items: center; gap: 0.75em; color: var(--muted); }
+            .prop-key .icon { width: 1.15em; height: 1.15em; flex: none; color: var(--faint); transform: translateY(0.1em); }
+            .prop-value { color: var(--text); overflow-wrap: anywhere; }
+            .properties + h1 { margin-top: 0; }
+            pre.mermaid { background: none !important; padding: 1em 0; margin: 1.2em 0 1.5em; }
+            pre.mermaid .node rect, pre.mermaid .node polygon, pre.mermaid .node circle, pre.mermaid .node path { rx: 6px; ry: 6px; }
+            .math-display { margin: 1em 0 1.2em; }
+            .katex { color: var(--heading); font-size: 1.08em; }
+            body { overflow-wrap: break-word; }
+            .chip { display: inline-block; margin: 0.1em 0.35em 0.1em 0; padding: 0.05em 0.6em; border-radius: 999px;
+              background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--heading); font-size: 0.95em; line-height: 1.6; }
+            .prop-sub { color: var(--muted); } .prop-empty { color: var(--faint); }
+            .prop-value input { -webkit-appearance: none; appearance: none; box-sizing: border-box; display: inline-grid; place-content: center;
+              width: 1.15em; height: 1.15em; margin: 0; vertical-align: -0.2em; border: 1.5px solid var(--muted); border-radius: 0.3em; }
+            .prop-value input:checked { background: var(--accent); border-color: var(--accent); }
+            .prop-value input:checked::after { content: ""; width: 0.48em; height: 0.26em; border: solid #fff;
+              border-width: 0 0 0.13em 0.13em; transform: translateY(-0.05em) rotate(-45deg); }
+            .prop-value a { overflow-wrap: anywhere; }
+            details { margin: 0 0 1em; } summary { cursor: pointer; }
+            details > summary::marker { color: var(--muted); }
+            details.callout > summary { list-style: none; } details.callout > summary::-webkit-details-marker { display: none; }
+            details.callout > summary::after { content: ""; width: 0.42em; height: 0.42em; margin-left: 0.15em;
+              border: solid currentColor; border-width: 0 0.12em 0.12em 0; transform: rotate(-45deg); transition: transform .15s; }
+            details.callout[open] > summary::after { transform: translateY(-0.12em) rotate(45deg); }
+            details.callout:not([open]) > summary { margin-bottom: 0; }
+            a.wikilink { color: var(--link); border-bottom: 1px dashed color-mix(in srgb, var(--link) 45%, transparent); }
+            a.wikilink:hover { text-decoration: none; border-bottom-style: solid; }
+            sup.fnref { font-size: 0.72em; line-height: 0; margin-left: 0.1em; }
+            sup.fnref a { padding: 0 0.15em; }
+            .footnotes { margin-top: 3em; padding-top: 1.2em; border-top: 1px solid var(--border); font-size: 0.875em; color: var(--muted); }
+            .footnotes ol { padding-left: 1.6em; } .footnotes li { margin-top: 0.35em; } .footnotes p { margin: 0; }
+            .footnotes li:target { color: var(--text); } a.fnback { margin-left: 0.25em; }
+            :target { scroll-margin-top: 24px; }
+            .dl { display: block; margin: 0 -1.15em; padding: 0 1.15em; }
+            .dl-add { background: color-mix(in srgb, #3FB950 15%, transparent); color: \(dark ? "#9BE9A8" : "#116329"); }
+            .dl-del { background: color-mix(in srgb, #F85149 15%, transparent); color: \(dark ? "#FFA198" : "#82071E"); }
+            .dl-hunk { color: \(dark ? "#79C0FF" : "#0550AE"); } .dl-meta { color: var(--muted); font-weight: 600; }
+            .codeblock pre:has(.dl) { padding-left: 1.15em; padding-right: 1.15em; }
+            ul.contains-task-list > li:not(.task-list-item) { list-style: disc; margin-left: 0.5em; }
+            .table-wrap td { min-width: 3em; }
+            @media print { .codebar .copy { display: none; } .codeblock, pre, table { break-inside: avoid; } details { display: block; } }
             """
         } else if invisible {
             // invisibledetails.com's lesson prose, scaled from its 15px.
@@ -944,6 +1324,22 @@ enum MarkdownHTML {
         .callout-title { margin: 0 0 4px; font-weight: 600; font-size: .92em; color: var(--c); }
         .callout > :last-child { margin-bottom: 0; }
         \(callouts)
+        .icon { width: 1em; height: 1em; vertical-align: -0.14em; }
+        .callout-title .icon { margin-right: .4em; }
+        .codeblock { margin: 0 0 16px; background: \(panel); border-radius: 10px; overflow: hidden; }
+        .codebar { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 0 20px;
+          font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: \(muted); }
+        .codeblock pre { margin: 0; background: none; border-radius: 0; }
+        .copy { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px;
+          background: none; color: inherit; cursor: pointer; }
+        .copy .icon { grid-area: 1 / 1; } .copy .icon + .icon { display: none; }
+        .copy.copied .icon:first-child { display: none; } .copy.copied .icon + .icon { display: block; }
+        .table-wrap { overflow-x: auto; margin: 0 0 16px; } .table-wrap > table { margin: 0; }
+        .properties { margin: 0 0 24px; padding-bottom: 16px; border-bottom: 1px solid \(border); font-size: .9em; }
+        .prop { display: grid; grid-template-columns: minmax(8em, 14em) 1fr; padding: 3px 0; }
+        .prop-key { display: flex; align-items: center; gap: .6em; color: \(muted); }
+        .prop-value { overflow-wrap: anywhere; }
+        @media print { .copy { display: none; } }
         \(lateCSS)
         .math-display { display: block; text-align: center; margin: 0 0 16px; overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
         .math-display .katex-display { margin: 0; }
@@ -959,15 +1355,34 @@ enum MarkdownHTML {
         \(body)
         <script nonce="\(nonce)" id="qm-script">
         (function () {
+          // Typeset math and diagrams once per source: while typing, the
+          // preview swaps the body in, and unchanged blocks come back from
+          // here instead of being laid out again.
+          var done = {};
           function typeset() {
-            if (window.katex) document.querySelectorAll('.math').forEach(function (el) {
-              try { katex.render(el.textContent, el, { displayMode: el.classList.contains('math-display'), throwOnError: false }); } catch (e) {}
+            if (window.katex) document.querySelectorAll('.math:not([data-key])').forEach(function (el) {
+              var display = el.classList.contains('math-display'), key = (display ? 'D' : 'I') + el.textContent;
+              el.setAttribute('data-key', key);
+              if (done[key] !== undefined) { el.innerHTML = done[key]; return; }
+              try { katex.render(el.textContent, el, { displayMode: display, throwOnError: false }); } catch (e) {}
+            });
+            if (!window.mermaid) return;
+            document.querySelectorAll('pre.mermaid:not([data-key])').forEach(function (el) {
+              var key = 'M' + el.textContent;
+              el.setAttribute('data-key', key);
+              if (done[key] !== undefined) { el.innerHTML = done[key]; el.setAttribute('data-processed', 'true'); }
             });
             // Measure labels in the page's own font, not a fallback.
-            if (window.mermaid && document.querySelector('pre.mermaid:not([data-processed])')) document.fonts.ready.then(function () {
+            if (document.querySelector('pre.mermaid:not([data-processed])')) document.fonts.ready.then(function () {
               configure();
               return mermaid.run({ querySelector: 'pre.mermaid:not([data-processed])' });
             }).catch(function () {});
+          }
+          function remember() {
+            done = {};
+            document.querySelectorAll('.math[data-key], pre.mermaid[data-processed][data-key]').forEach(function (el) {
+              done[el.getAttribute('data-key')] = el.innerHTML;
+            });
           }
           // Charts take their colours from a palette: the base theme
           // derives them from the white node fill, so pies, bars and
@@ -978,9 +1393,9 @@ enum MarkdownHTML {
             : "['#4E79A7','#F28E2B','#59A14F','#E15759','#76B7B2','#C9A227','#B07AA1','#FF9DA7','#9C755F','#8E8A86','#5FA39C','#B784A7']");
           function configure() {
             var box = document.querySelector('pre.mermaid'), width = box ? box.clientWidth - 40 : 800;
-            var vars = { background: 'transparent', primaryColor: '\(dark ? "#26292B" : "#FFFFFF")',
-              primaryBorderColor: '\(dark ? "#E5E5E5" : "#1A1A1A")', primaryTextColor: '\(primary)',
-              lineColor: '\(prose)', textColor: '\(prose)', fontSize: '\(max(13, size - 1))px',
+            var vars = { background: 'transparent', primaryColor: '\(looq ? (dark ? "#233253" : "#E8EEFB") : dark ? "#26292B" : "#FFFFFF")',
+              primaryBorderColor: '\(looq ? (dark ? "#4A68AD" : "#7D9BE0") : dark ? "#E5E5E5" : "#1A1A1A")', primaryTextColor: '\(primary)',
+              lineColor: '\(looq ? (dark ? "#7F8693" : "#8C959F") : prose)', textColor: '\(prose)', fontSize: '\(max(13, size - 1))px',
               secondaryColor: '\(dark ? "#33373A" : "#F4F5F5")', tertiaryColor: '\(dark ? "#1D2022" : "#FAFAFA")',
               pieStrokeColor: '\(dark ? "#1C1C1C" : "#FFFFFF")', pieStrokeWidth: '1.5px', pieOuterStrokeWidth: '0', pieOuterStrokeColor: 'transparent',
               pieSectionTextColor: '#FFFFFF', pieTitleTextColor: '\(primary)', pieLegendTextColor: '\(prose)', pieOpacity: '1',
@@ -1003,13 +1418,56 @@ enum MarkdownHTML {
           // The live preview swaps the body in place while typing, so
           // the page neither reloads nor loses its scroll position.
           window.qmUpdate = function (html) {
+            remember();
             var end = document.getElementById('qm-script'), range = document.createRange();
             range.setStart(document.body, 0);
             range.setEndBefore(end);
             range.deleteContents();
             end.insertAdjacentHTML('beforebegin', html);
+            marks = null;
             typeset();
           };
+          // Follows the editor: `line` is the source line at the top of
+          // the editor (fractional), or -1 for the very end.
+          var marks = null;
+          window.qmScrollTo = function (line) {
+            var max = document.documentElement.scrollHeight - window.innerHeight;
+            if (line < 0) { window.scrollTo(0, max); return; }
+            if (!marks) marks = Array.prototype.map.call(document.querySelectorAll('[data-line]'), function (el) {
+              return [parseInt(el.getAttribute('data-line'), 10), el];
+            });
+            var prev = null, next = null;
+            for (var k = 0; k < marks.length; k++) {
+              if (marks[k][0] <= line) prev = marks[k]; else { next = marks[k]; break; }
+            }
+            function top(el) { return el.getBoundingClientRect().top + window.scrollY; }
+            var y = 0;
+            if (prev) {
+              var a = top(prev[1]), b = next ? top(next[1]) : a + prev[1].offsetHeight;
+              var span = next ? next[0] - prev[0] : Math.max(1, line - prev[0] + 1);
+              y = a + (b - a) * Math.min(1, (line - prev[0]) / span);
+            } else if (next) {
+              y = top(next[1]) * (line / Math.max(1, next[0]));
+            }
+            window.scrollTo(0, Math.max(0, Math.min(max, y - 12)));
+          };
+          // Double-click a block to find it in the editor.
+          document.addEventListener('dblclick', function (e) {
+            var h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.qmReveal;
+            var el = e.target && e.target.closest && e.target.closest('[data-line]');
+            if (h && el) h.postMessage(parseInt(el.getAttribute('data-line'), 10));
+          });
+          // A code block's copy button: through the app when it's
+          // listening, else the page's own clipboard.
+          document.addEventListener('click', function (e) {
+            var b = e.target && e.target.closest && e.target.closest('.copy');
+            if (!b) return;
+            var pre = b.closest('.codeblock').querySelector('pre'), text = pre ? pre.innerText.replace(/\\n$/, '') : '';
+            var h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.qmCopy;
+            if (h) h.postMessage(text); else if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function () {});
+            b.classList.add('copied');
+            setTimeout(function () { b.classList.remove('copied'); }, 1400);
+          });
           document.addEventListener('change', function (e) {
             var t = e.target, h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.qmTask;
             if (h && t && t.dataset && t.dataset.task !== undefined) h.postMessage(parseInt(t.dataset.task, 10));

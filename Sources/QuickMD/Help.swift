@@ -19,7 +19,7 @@ enum Help {
 
     ## Reading
 
-    - View › Reading Mode (⌥⌘P) shows the note without Markdown marks.
+    - One view does both: the note shows itself styled — headings, lists, tables, code — and the line the caret is in shows its Markdown, ready to edit.
     - View › Show Sidebar (⌃⌘S) shows the outline; click a heading to jump to it.
     - Click the footer to switch between words, characters and reading time.
 

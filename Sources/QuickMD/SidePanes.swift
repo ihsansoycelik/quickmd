@@ -37,7 +37,9 @@ final class PreviewScheme: NSObject, WKURLSchemeHandler {
             let resource = String(path.dropFirst(Self.appPrefix.count))
             if !resource.split(separator: "/").contains("..") { file = AppResources.url(resource) }
         } else if Self.media.contains(url.pathExtension.lowercased()) {
-            file = URL(fileURLWithPath: path)
+            let candidate = URL(fileURLWithPath: path).standardizedFileURL
+            // Only from folders the user has let the app read.
+            if FolderAccess.canRead(candidate.deletingLastPathComponent()) { file = candidate }
         }
         let id = ObjectIdentifier(task)
         DispatchQueue.global(qos: .userInitiated).async {

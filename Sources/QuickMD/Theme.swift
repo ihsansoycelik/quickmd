@@ -67,7 +67,8 @@ struct CodeColors {
         }
         switch theme {
         case .dark:
-            return CodeColors(keyword: hex(0xFF7AB2), string: hex(0xF2D489), comment: hex(0x7F8C98), number: hex(0xD9C97C), type: hex(0x6BDFFF))
+            // VS Code's Dark+, as MarkView shows code.
+            return CodeColors(keyword: hex(0xC586C0), string: hex(0xCE9178), comment: hex(0x6A9955), number: hex(0xB5CEA8), type: hex(0x4EC9B0))
         case .light:
             return CodeColors(keyword: hex(0xAD3DA4), string: hex(0xA6461D), comment: hex(0x707F8C), number: hex(0x272AD8), type: hex(0x0B6B8F))
         }
@@ -88,8 +89,19 @@ struct CodeColors {
 enum CalloutKind: String, CaseIterable {
     case note, tip, important, warning, caution
 
+    /// GitHub's five markers, and Obsidian's other kinds mapped onto
+    /// the nearest colour (`[!info]` reads as a note, `[!bug]` as caution).
     init?(marker: String) {
-        self.init(rawValue: marker.lowercased())
+        let name = marker.lowercased()
+        if let kind = CalloutKind(rawValue: name) { self = kind; return }
+        switch name {
+        case "info", "todo", "abstract", "summary", "tldr", "quote", "cite": self = .note
+        case "hint", "success", "check", "done": self = .tip
+        case "example": self = .important
+        case "question", "help", "faq", "attention": self = .warning
+        case "failure", "fail", "missing", "danger", "error", "bug": self = .caution
+        default: return nil
+        }
     }
 
     var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
@@ -126,8 +138,8 @@ struct LooqColors {
 
     static func `for`(_ theme: Theme) -> LooqColors {
         let hexes: [String: String] = theme == .dark
-            ? ["bg": "#1e1e1e", "text": "#d4d4d4", "heading": "#e0e0e0", "secondary": "#808080", "link": "#4fc1ff", "codeBg": "#2d2d2d"]
-            : ["bg": "#ffffff", "text": "#1f1f1f", "heading": "#1f1f1f", "secondary": "#6a737d", "link": "#006ab1", "codeBg": "#f3f3f3"]
+            ? ["bg": "#111319", "text": "#e6e8ee", "heading": "#f4f6fa", "secondary": "#7f8693", "link": "#558dff", "codeBg": "#1e1e1e"]
+            : ["bg": "#ffffff", "text": "#1f2328", "heading": "#0d1117", "secondary": "#656d76", "link": "#2f6feb", "codeBg": "#f6f8fa"]
         func color(_ key: String) -> NSColor {
             let v = UInt32(hexes[key]!.dropFirst(), radix: 16)!
             return NSColor(srgbRed: CGFloat(v >> 16 & 0xFF) / 255, green: CGFloat(v >> 8 & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
