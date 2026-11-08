@@ -63,9 +63,9 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$ARCH_DIR/$NAME" "$APP_DIR/Contents/MacOS/$NAME"
 cp "$ROOT/scripts/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
-# Bundled fonts (Inter, QuickMD Myeongjo), KaTeX and Mermaid, each with
+# KaTeX and Mermaid, each with
 # its license; the app's own license and credits for the About panel.
-cp -R "$ROOT/Resources/Fonts" "$ROOT/Resources/katex" "$ROOT/Resources/mermaid" "$APP_DIR/Contents/Resources/"
+cp -R "$ROOT/Resources/katex" "$ROOT/Resources/mermaid" "$APP_DIR/Contents/Resources/"
 cp "$ROOT/LICENSE" "$APP_DIR/Contents/Resources/LICENSE.txt"
 cp "$ROOT/Packaging/Credits.rtf" "$ROOT/Packaging/PrivacyInfo.xcprivacy" "$APP_DIR/Contents/Resources/"
 find "$APP_DIR" -name .DS_Store -delete

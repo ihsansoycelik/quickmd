@@ -2,31 +2,23 @@ import AppKit
 import UniformTypeIdentifiers
 import WebKit
 
-/// One window per document: the outline sidebar beside the one view —
-/// a live-styled text view that reads like the page and edits like
-/// markdown, its tokens showing only on the caret's line.
-final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation,
-    NSToolbarDelegate, NSSharingServicePickerToolbarItemDelegate {
-    private let split = NSSplitViewController()
+/// One window per document holding the one view: a live-styled text
+/// view that reads like the page and edits like markdown, its marks
+/// showing only on the caret's line. No sidebar, no toolbar.
+final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
     private let editor = EditorViewController()
-    private let outline = OutlineViewController()
-    private var outlineItem: NSSplitViewItem!
-    private var editorItem: NSSplitViewItem!
     private var settingsObserver: Any?
-    /// Glass chrome: blur behind the window, a tint over it, content on top.
-    private let glass = NSVisualEffectView()
-    private let tint = NSView()
 
     private var markdownDocument: MarkdownDocument? { document as? MarkdownDocument }
 
     init(document: MarkdownDocument) {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
+            contentRect: NSRect(x: 0, y: 0, width: 860, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false
         )
         window.titlebarAppearsTransparent = true
-        window.isOpaque = false
+        window.titlebarSeparatorStyle = .none
         window.minSize = NSSize(width: 420, height: 300)
         // MarkdownDocument.showWindows does the tabbing itself, so it
         // follows the setting and not System Settings' "Prefer tabs".
@@ -36,51 +28,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         window.delegate = self
         shouldCascadeWindows = true
         windowFrameAutosaveName = "QuickMDDocument"
-
-        outlineItem = NSSplitViewItem(sidebarWithViewController: outline)
-        outlineItem.minimumThickness = 160
-        outlineItem.maximumThickness = 360
-        outlineItem.isCollapsed = !Settings.showsOutline
-        outlineItem.canCollapse = true
-        editorItem = NSSplitViewItem(viewController: editor)
-        editorItem.minimumThickness = 280
-        editorItem.canCollapse = true
-        split.addSplitViewItem(outlineItem)
-        split.addSplitViewItem(editorItem)
-
-        let container = NSViewController()
-        let root = NSView()
-        glass.blendingMode = .behindWindow
-        glass.state = .active
-        glass.material = .fullScreenUI
-        tint.wantsLayer = true
-        for layer in [glass, tint, split.view] as [NSView] {
-            layer.translatesAutoresizingMaskIntoConstraints = false
-            root.addSubview(layer)
-            NSLayoutConstraint.activate([
-                layer.topAnchor.constraint(equalTo: root.topAnchor),
-                layer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-                layer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-                layer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            ])
-        }
-        container.view = root
-        container.addChild(split)
-        window.contentViewController = container
-        installToolbar(in: window)
-        if window.frame.width < 600 { window.setContentSize(NSSize(width: 900, height: 700)) }
+        window.contentViewController = editor
+        if window.frame.width < 600 { window.setContentSize(NSSize(width: 860, height: 720)) }
         if !window.setFrameUsingName("QuickMDDocument") { window.center() }
-
-        editor.onTextChange = { [weak self] text in self?.outline.update(text: text) }
-        editor.onCaretMove = { [weak self] location in self?.outline.highlight(location: location) }
-        outline.onSelect = { [weak self] location in self?.editor.reveal(location: location) }
 
         settingsObserver = NotificationCenter.default.addObserver(
             forName: .editorSettingsChanged, object: nil, queue: .main
         ) { [weak self] _ in self?.applyTheme() }
 
         document.editor = editor
-        _ = editor.view
         editor.textView.baseURL = document.fileURL?.deletingLastPathComponent()
         // A note an agent wrote a moment ago (opened right after it was
         // written) plays in from empty, as if it were still being typed.
@@ -89,7 +45,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         } else {
             editor.load(document.text)
         }
-        outline.update(text: document.text)
         applyTheme()
     }
 
@@ -120,129 +75,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     private func applyTheme() {
         let theme = Settings.theme
-        let chrome = Chrome.for(theme, transparency: Settings.transparency, template: Settings.template)
-        window?.appearance = NSAppearance(named: chrome.appearance)
-        window?.isOpaque = !chrome.usesVisualEffect
-        window?.backgroundColor = chrome.usesVisualEffect ? .clear : chrome.tintColor
-        glass.isHidden = !chrome.usesVisualEffect
-        glass.material = chrome.material
-        tint.layer?.backgroundColor = chrome.tintColor.cgColor
-    }
-
-    // MARK: Sidebar
-
-    @objc func toggleOutline(_ sender: Any?) {
-        outlineItem.animator().isCollapsed.toggle()
-        Settings.showsOutline = !outlineItem.isCollapsed
-    }
-
-    // MARK: Toolbar
-
-    private enum ToolbarID {
-        static let toolbar = NSToolbar.Identifier("QuickMDToolbar3")
-        static let outline = NSToolbarItem.Identifier("outline")
-        static let separator = NSToolbarItem.Identifier("outlineSeparator")
-        static let format = NSToolbarItem.Identifier("format")
-        static let share = NSToolbarItem.Identifier("share")
-    }
-
-    /// A unified toolbar, as in Notes or Pages: the outline toggle sits
-    /// over the sidebar, the title follows the sidebar's edge, and the
-    /// few actions a writer reaches for live on the right.
-    private func installToolbar(in window: NSWindow) {
-        let toolbar = NSToolbar(identifier: ToolbarID.toolbar)
-        toolbar.delegate = self
-        toolbar.displayMode = .iconOnly
-        toolbar.allowsUserCustomization = true
-        toolbar.autosavesConfiguration = true
-        window.toolbar = toolbar
-        window.toolbarStyle = .unified
-        window.titlebarSeparatorStyle = .none
-    }
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.outline, ToolbarID.separator, .flexibleSpace, ToolbarID.format, ToolbarID.share]
-    }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar) + [.space]
-    }
-
-    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
-                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        func button(_ label: String, _ symbol: String, _ action: Selector, tip: String) -> NSToolbarItem {
-            let item = NSToolbarItem(itemIdentifier: id)
-            item.label = label
-            item.paletteLabel = label
-            item.toolTip = tip
-            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-            item.isBordered = true
-            item.target = self
-            item.action = action
-            return item
-        }
-        switch id {
-        case ToolbarID.outline:
-            return button("Outline", "sidebar.left", #selector(toggleOutline(_:)), tip: "Show or hide the outline (⌃⌘S)")
-        case ToolbarID.separator:
-            return NSTrackingSeparatorToolbarItem(identifier: id, splitView: split.splitView, dividerIndex: 0)
-        case ToolbarID.format:
-            let item = NSMenuToolbarItem(itemIdentifier: id)
-            item.label = "Format"
-            item.paletteLabel = "Format"
-            item.toolTip = "Headings, lists and blocks"
-            item.image = NSImage(systemSymbolName: "textformat", accessibilityDescription: "Format")
-            item.showsIndicator = true
-            item.menu = Self.formatMenu()
-            return item
-        case ToolbarID.share:
-            let item = NSSharingServicePickerToolbarItem(itemIdentifier: id)
-            item.label = "Share"
-            item.paletteLabel = "Share"
-            item.toolTip = "Share this note"
-            item.delegate = self
-            return item
-        default:
-            return nil
-        }
-    }
-
-    /// The Format menu's everyday half, sent down the responder chain
-    /// to the text view like the menu bar's items.
-    private static func formatMenu() -> NSMenu {
-        let menu = NSMenu(title: "Format")
-        func add(_ title: String, _ symbol: String?, _ action: Selector, tag: Int = 0) {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.tag = tag
-            if let symbol { item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
-            menu.addItem(item)
-        }
-        add("Heading 1", nil, #selector(MarkdownTextView.setHeading(_:)), tag: 1)
-        add("Heading 2", nil, #selector(MarkdownTextView.setHeading(_:)), tag: 2)
-        add("Heading 3", nil, #selector(MarkdownTextView.setHeading(_:)), tag: 3)
-        add("Body Text", nil, #selector(MarkdownTextView.setHeading(_:)), tag: 0)
-        menu.addItem(.separator())
-        add("Bold", "bold", #selector(MarkdownTextView.toggleBold(_:)))
-        add("Italic", "italic", #selector(MarkdownTextView.toggleItalic(_:)))
-        add("Strikethrough", "strikethrough", #selector(MarkdownTextView.toggleStrikethrough(_:)))
-        add("Inline Code", "chevron.left.forwardslash.chevron.right", #selector(MarkdownTextView.toggleInlineCode(_:)))
-        add("Link", "link", #selector(MarkdownTextView.insertLink(_:)))
-        menu.addItem(.separator())
-        add("Bulleted List", "list.bullet", #selector(MarkdownTextView.toggleBulletList(_:)))
-        add("Numbered List", "list.number", #selector(MarkdownTextView.toggleNumberedList(_:)))
-        add("Task List", "checklist", #selector(MarkdownTextView.toggleTaskList(_:)))
-        add("Quote", "text.quote", #selector(MarkdownTextView.toggleQuote(_:)))
-        menu.addItem(.separator())
-        add("Code Block", "curlybraces", #selector(MarkdownTextView.insertCodeBlock(_:)))
-        add("Table", "tablecells", #selector(MarkdownTextView.insertTable(_:)))
-        add("Horizontal Rule", "minus", #selector(MarkdownTextView.insertHorizontalRule(_:)))
-        return menu
-    }
-
-    /// The saved file when there is one, else the note's text.
-    func items(for pickerToolbarItem: NSSharingServicePickerToolbarItem) -> [Any] {
-        if let url = markdownDocument?.fileURL, markdownDocument?.isDocumentEdited == false { return [url] }
-        return [editor.currentText]
+        window?.appearance = NSAppearance(named: theme.appearanceName)
+        window?.backgroundColor = Palette.for(theme).background
     }
 
     // MARK: Export
@@ -255,9 +89,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private func renderedPage(assets: MarkdownHTML.Assets) -> String {
         MarkdownHTML.page(
             body: MarkdownHTML.render(editor.currentText),
-            title: documentTitle, theme: .light, template: Settings.template,
-            fontFamily: Settings.fontFace.cssFamily, headingFamily: Settings.headingFace?.cssFamily,
-            fontSize: Settings.fontSize, baseURL: nil, assets: assets
+            title: documentTitle, theme: .light, fontSize: Settings.fontSize, baseURL: nil, assets: assets
         )
     }
 
@@ -313,8 +145,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(toggleOutline(_:)):
-            menuItem.title = outlineItem.isCollapsed ? "Show Sidebar" : "Hide Sidebar"
         case #selector(printRenderedDocument(_:)), #selector(exportPDF(_:)):
             return printer == nil
         default:

@@ -39,7 +39,7 @@ struct PerfProbeTests {
             // Full restyle.
             let storage = NSTextStorage(string: text)
             var t = now()
-            MarkdownStyler.restyle(storage, face: FontFace(rawValue: "system"), size: 15, theme: .dark, template: .looq)
+            MarkdownStyler.restyle(storage, size: 15, theme: .dark)
             let full = (now() - t) * 1000
 
             // Keystrokes at three kinds of lines: plain, table, fence body.
@@ -54,13 +54,13 @@ struct PerfProbeTests {
                     for _ in 0..<5 {
                     let s2 = NSTextStorage(string: text)
                     let idx = index.map { _ in FenceIndex() }
-                    MarkdownStyler.restyle(s2, face: FontFace(rawValue: "system"), size: 15, theme: .dark, template: .looq, fenceIndex: idx)
+                    MarkdownStyler.restyle(s2, size: 15, theme: .dark, fenceIndex: idx)
                     s2.beginEditing()
                     s2.replaceCharacters(in: NSRange(location: paragraph.location, length: 1), with: "X")
                     s2.endEditing()
                     _ = s2.attribute(.font, at: paragraph.location, effectiveRange: nil)  // pay any fixing here
                     let start = now()
-                        MarkdownStyler.restyle(s2, face: FontFace(rawValue: "system"), size: 15, theme: .dark, template: .looq, edited: paragraph, fenceIndex: idx)
+                        MarkdownStyler.restyle(s2, size: 15, theme: .dark, edited: paragraph, fenceIndex: idx)
                         fastest = min(fastest, (now() - start) * 1000)
                     }
                     return fastest

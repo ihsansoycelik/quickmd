@@ -8,7 +8,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationWillFinishLaunching(_ notification: Notification) {
         // The shared controller must exist before any file is opened.
         _ = QuickMDDocumentController()
-        AppResources.registerFonts()
         FolderAccess.restore()
         NSApp.mainMenu = MainMenu.build(target: self)
     }
@@ -80,10 +79,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     // MARK: Preferences
 
-    @objc func chooseFont(_ sender: NSMenuItem) {
-        if let id = sender.representedObject as? String, !id.isEmpty { Settings.fontFace = FontFace(rawValue: id) }
-    }
-
     @objc func showSettings(_ sender: Any?) {
         SettingsWindowController.shared.showWindow(nil)
         SettingsWindowController.shared.window?.makeKeyAndOrderFront(nil)
@@ -94,38 +89,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         (NSDocumentController.shared as? QuickMDDocumentController)?.newDocument(from: .blank)
     }
 
-    @objc func chooseTemplate(_ sender: NSMenuItem) {
-        if let template = Template(rawValue: sender.representedObject as? String ?? "") { Settings.template = template }
-    }
-
     @objc func chooseTheme(_ sender: NSMenuItem) {
         if let theme = ThemePreference(rawValue: sender.representedObject as? String ?? "") { Settings.themePreference = theme }
     }
 
-    @objc func chooseTransparency(_ sender: NSMenuItem) {
-        if let level = Transparency(rawValue: sender.representedObject as? String ?? "") { Settings.transparency = level }
-    }
-
     @objc func biggerText(_ sender: Any?) { Settings.fontSize += 1 }
     @objc func smallerText(_ sender: Any?) { Settings.fontSize -= 1 }
-    @objc func defaultTextSize(_ sender: Any?) { Settings.fontSize = Settings.template.defaultSize }
-    @objc func toggleReadableWidth(_ sender: Any?) { Settings.readableWidth.toggle() }
-    @objc func toggleStatusBar(_ sender: Any?) { Settings.showsStatusBar.toggle() }
+    @objc func defaultTextSize(_ sender: Any?) { Settings.fontSize = Design.defaultSize }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(chooseFont(_:)):
-            menuItem.state = Settings.fontFace.rawValue == menuItem.representedObject as? String ? .on : .off
-        case #selector(chooseTemplate(_:)):
-            menuItem.state = Settings.template.rawValue == menuItem.representedObject as? String ? .on : .off
         case #selector(chooseTheme(_:)):
             menuItem.state = Settings.themePreference.rawValue == menuItem.representedObject as? String ? .on : .off
-        case #selector(chooseTransparency(_:)):
-            menuItem.state = Settings.transparency.rawValue == menuItem.representedObject as? String ? .on : .off
-        case #selector(toggleReadableWidth(_:)):
-            menuItem.state = Settings.readableWidth ? .on : .off
-        case #selector(toggleStatusBar(_:)):
-            menuItem.state = Settings.showsStatusBar ? .on : .off
         case #selector(makeDefault(_:)):
             menuItem.state = isDefault ? .on : .off
         default:

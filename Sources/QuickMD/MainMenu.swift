@@ -161,32 +161,11 @@ enum MainMenu {
         menu.addItem(item("Outdent", #selector(MarkdownTextView.outdentLines(_:)), "["))
         menu.addItem(.separator())
 
-        let templates = NSMenu(title: "Style")
-        for template in Template.allCases {
-            let entry = item(template.displayName, #selector(AppDelegate.chooseTemplate(_:)), target: app)
-            entry.representedObject = template.rawValue
-            templates.addItem(entry)
-        }
-        menu.addItem(submenu(templates))
-        let fonts = NSMenu(title: "Font")
-        for face in FontFace.curated {
-            let entry = item(face.displayName, #selector(AppDelegate.chooseFont(_:)), target: app)
-            entry.representedObject = face.rawValue
-            if let font = face.font(size: 13) { entry.attributedTitle = NSAttributedString(string: face.displayName, attributes: [.font: font]) }
-            fonts.addItem(entry)
-        }
-        fonts.addItem(.separator())
-        fonts.addItem(item("More Fonts and Size…", #selector(AppDelegate.showSettings(_:)), target: app))
-        menu.addItem(submenu(fonts))
         return menu
     }
 
     private static func viewMenu(_ app: AppDelegate) -> NSMenu {
         let menu = NSMenu(title: "View")
-        menu.addItem(item("Show Sidebar", #selector(DocumentWindowController.toggleOutline(_:)), "s", [.command, .control]))
-        menu.addItem(item("Footer", #selector(AppDelegate.toggleStatusBar(_:)), target: app))
-        menu.addItem(item("Readable Line Width", #selector(AppDelegate.toggleReadableWidth(_:)), target: app))
-        menu.addItem(.separator())
         menu.addItem(item("Bigger", #selector(AppDelegate.biggerText(_:)), "+", target: app))
         // ⌘= too: on many layouts, Turkish among them, + needs Shift.
         let bigger = item("Bigger", #selector(AppDelegate.biggerText(_:)), "=", target: app)
@@ -203,16 +182,7 @@ enum MainMenu {
             themes.addItem(entry)
         }
         menu.addItem(submenu(themes))
-        let glass = NSMenu(title: "Transparency")
-        for level in Transparency.allCases {
-            let entry = item(level.displayName, #selector(AppDelegate.chooseTransparency(_:)), target: app)
-            entry.representedObject = level.rawValue
-            glass.addItem(entry)
-        }
-        menu.addItem(submenu(glass))
         menu.addItem(.separator())
-        menu.addItem(item("Hide Toolbar", #selector(NSWindow.toggleToolbarShown(_:))))
-        menu.addItem(item("Customize Toolbar…", #selector(NSWindow.runToolbarCustomizationPalette(_:))))
         menu.addItem(item("Show Tab Bar", #selector(NSWindow.toggleTabBar(_:))))
         menu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
         return menu

@@ -417,7 +417,7 @@ final class MarkdownTextView: NSTextView {
     /// Puts the caret on the heading whose anchor (as the preview makes them) is `id`.
     private func jumpToHeading(_ id: String) {
         let wanted = id.lowercased()
-        guard let heading = Outline.headings(in: string).first(where: { MarkdownHTML.slug($0.title) == wanted }) else {
+        guard let heading = Headings.find(in: string).first(where: { MarkdownHTML.slug($0.title) == wanted }) else {
             NSSound.beep()
             return
         }

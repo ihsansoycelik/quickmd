@@ -1,23 +1,12 @@
 import AppKit
 
-/// The writing surface: a live-styled markdown text view over the
-/// document's text, with a quiet footer underneath. Draws no
-/// background of its own; the window's glass shows through.
+/// The writing surface: a live-styled markdown text view in a centred
+/// column. Draws no background of its own; the window's shows through.
 final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextStorageDelegate, NSLayoutManagerDelegate {
     let textView: MarkdownTextView
     private let scrollView: NSScrollView
-    private let footer = EditorFooter()
-    private var footerHeight: NSLayoutConstraint!
     private var pendingEdit: NSRange?
     private var settingsObserver: Any?
-    /// Whole-note work (counts, outline, preview) waits for a pause in typing.
-    private var idleWork: DispatchWorkItem?
-    private var stats = TextStats.Counts()
-
-    /// Called after every edit (debounced by the receiver if it wants).
-    var onTextChange: ((String) -> Void)?
-    /// Called when the caret moves, with its UTF-16 offset.
-    var onCaretMove: ((Int) -> Void)?
 
     /// While a live change plays in, the text it's heading for.
     var currentText: String { playback?.target ?? textView.string }
@@ -89,24 +78,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.setAccessibilityLabel("Note")
         textView.textStorage?.delegate = self
 
-        footer.translatesAutoresizingMaskIntoConstraints = false
-
         root.addSubview(scrollView)
-        root.addSubview(footer)
-        // A click on the count switches words, characters, reading time.
-        footer.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(cycleFooterStat(_:))))
-        footer.toolTip = "Click to show words, characters or reading time"
-        footerHeight = footer.heightAnchor.constraint(equalToConstant: 44)
         NSLayoutConstraint.activate([
             // Below the title bar, so text never scrolls under the title.
             scrollView.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: footer.topAnchor),
-            footer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            footer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            footer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            footerHeight,
+            scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
         view = root
 
@@ -133,7 +111,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let length = (text as NSString).length
         textView.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
         textView.undoManager?.removeAllActions()
-        noteChanged(immediately: true)
     }
 
     // MARK: Live writing
@@ -227,7 +204,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         } else {
             styledUpTo = (textView.string as NSString).length
         }
-        noteChanged(immediately: true)
         fadeGlow(NSRange(location: p.start, length: p.inserted.length))
     }
 
@@ -495,14 +471,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             isPlainText = true
             styledUpTo = length
             applyPlainTextLook(storage)
-            updateStatus()
             return
         }
         isPlainText = false
         guard length > Self.progressiveLimit else {
             styledUpTo = length
             restyle()
-            updateStatus()
             return
         }
         styledUpTo = 0
@@ -533,7 +507,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         }
         restyle(chunk: NSRange(location: styledUpTo, length: end - styledUpTo))
         styledUpTo = end
-        if styledUpTo >= length { updateStatus() }
     }
 
     private func scheduleChunk() {
@@ -552,7 +525,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
 
     /// The huge-note look: the body font and colour, nothing else.
     private func applyPlainTextLook(_ storage: NSTextStorage) {
-        let palette = Palette.for(Settings.theme, template: Settings.template)
+        let palette = Palette.for(Settings.theme)
         storage.setAttributes(
             [.font: textView.font ?? .systemFont(ofSize: Settings.fontSize), .foregroundColor: palette.text],
             range: NSRange(location: 0, length: (storage.string as NSString).length)
@@ -566,9 +539,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             return
         }
         MarkdownStyler.restyle(
-            storage, face: Settings.fontFace, size: Settings.fontSize,
-            theme: Settings.theme, template: Settings.template,
-            headingFace: Settings.headingFace, edited: edited, chunk: chunk, fenceIndex: fenceIndex
+            storage, size: Settings.fontSize, theme: Settings.theme,
+            edited: edited, chunk: chunk, fenceIndex: fenceIndex
         )
     }
 
@@ -596,28 +568,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             pendingEdit = nil
             restyle(edited: edited)
         }
-        noteChanged(immediately: false)
-    }
-
-    /// Counts, outline and preview cover the whole note, so while
-    /// typing they run once the keys pause, not on every keystroke.
-    private func noteChanged(immediately: Bool) {
-        idleWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            let text = self.textView.string
-            self.stats = TextStats.counts(in: text)
-            self.updateStatus()
-            self.onTextChange?(text)
-        }
-        idleWork = work
-        if immediately { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work) }
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
         updateActiveLine()
-        updateStatus()
-        onCaretMove?(textView.selectedRange().location)
     }
 
     /// Line breaks stay `\n` in the editor (the document converts on
@@ -627,21 +581,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
         DispatchQueue.main.async { textView.insertText(normalized, replacementRange: range) }
         return false
-    }
-
-    func reveal(location: Int) {
-        let length = (textView.string as NSString).length
-        let range = NSRange(location: min(location, length), length: 0)
-        textView.setSelectedRange(range)
-        // Put the heading near the top rather than wherever scrolling stops.
-        if let layoutManager = textView.layoutManager, let container = textView.textContainer {
-            let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-            let rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: container)
-            let y = max(0, rect.minY + textView.textContainerOrigin.y - 24)
-            scrollView.contentView.scroll(to: NSPoint(x: 0, y: y))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-        }
-        view.window?.makeFirstResponder(textView)
     }
 
     /// In a new document made from a template, selects the title so
@@ -666,90 +605,37 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
 
     private func applySettings() {
         let theme = Settings.theme
-        let template = Settings.template
-        let palette = Palette.for(theme, template: template)
+        let palette = Palette.for(theme)
+        let font = MarkdownStyler.bodyFont(size: Settings.fontSize)
         view.appearance = NSAppearance(named: theme.appearanceName)
         textView.insertionPointColor = palette.cursor
         textView.selectedTextAttributes = [.backgroundColor: palette.selection]
-        footerHeight.constant = Settings.showsStatusBar ? 44 : 0
-        footer.isHidden = !Settings.showsStatusBar
         if let layoutManager = textView.layoutManager as? HorizontalRuleLayoutManager {
             layoutManager.ruleColor = palette.divider
-            layoutManager.codeBlockColor = Palette.codeBackground(for: theme, template: template)
+            layoutManager.codeBlockColor = palette.codeBackground
             layoutManager.panelBorderColor = palette.divider
-            layoutManager.panelFillColor = Palette.codeBackground(for: theme, template: template)
+            layoutManager.panelFillColor = palette.codeBackground
             layoutManager.checkboxColor = palette.text.withAlphaComponent(0.5)
-            layoutManager.tableBodyFont = MarkdownStyler.bodyFont(face: Settings.fontFace, size: Settings.fontSize, template: template)
+            layoutManager.tableBodyFont = font
         }
-        let font = MarkdownStyler.bodyFont(face: Settings.fontFace, size: Settings.fontSize, template: template)
         textView.font = font
         textView.typingAttributes = [
             .font: font,
             .foregroundColor: palette.text,
-            .paragraphStyle: MarkdownStyler.bodyParagraph(font: font, template: template),
+            .paragraphStyle: MarkdownStyler.bodyParagraph(font: font),
         ]
         restyleForDisplay()
         updateColumn()
-        updateStatus()
         textView.needsDisplay = true
     }
 
-    /// Past a comfortable measure (about 30–34 ems, near 70 characters) extra width becomes
-    /// margin rather than longer lines.
+    /// The text keeps to `Design.measure` characters; extra width
+    /// becomes equal margins either side.
     private func updateColumn() {
         let width = scrollView.contentView.bounds.width
         let minimum: CGFloat = 32
-        var inset = minimum
-        if Settings.readableWidth, Settings.template.measure > 0 {
-            let measure = Settings.fontSize * Settings.template.measure
-            inset = max(minimum, ((width - measure) / 2).rounded(.down))
-        }
-        let size = NSSize(width: inset, height: 28)
+        let inset = max(minimum, ((width - Design.columnWidth(size: Settings.fontSize)) / 2).rounded(.down))
+        let size = NSSize(width: inset, height: 40)
         if textView.textContainerInset != size { textView.textContainerInset = size }
     }
-
-    private func updateStatus() {
-        guard Settings.showsStatusBar else { return }
-        let selection = textView.selectedRange()
-        var label: String
-        if selection.length > 0 {
-            let selected = TextStats.counts(in: (textView.string as NSString).substring(with: selection))
-            label = Settings.footerStat.label(selected, of: stats)
-        } else {
-            label = Settings.footerStat.label(stats)
-        }
-        if isPlainText { label += " · plain text" }
-        footer.label = label
-    }
-
-    @objc private func cycleFooterStat(_ sender: Any?) {
-        Settings.footerStat = Settings.footerStat.next
-        updateStatus()
-    }
-}
-
-/// The quiet footer: the word count, in tertiary grey.
-final class EditorFooter: NSView {
-    private let count = NSTextField(labelWithString: "")
-
-    var label: String {
-        get { count.stringValue }
-        set { count.stringValue = newValue }
-    }
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        count.textColor = .tertiaryLabelColor
-        count.lineBreakMode = .byTruncatingTail
-        count.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(count)
-        NSLayoutConstraint.activate([
-            count.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
-            count.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -24),
-            count.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 }

@@ -20,13 +20,11 @@ enum Help {
     ## Reading
 
     - One view does both: the note shows itself styled — headings, lists, tables, code — and the line the caret is in shows its Markdown, ready to edit.
-    - View › Show Sidebar (⌃⌘S) shows the outline; click a heading to jump to it.
-    - Click the footer to switch between words, characters and reading time.
 
     ## Look
 
-    - Format › Style and Format › Font change the look of every note.
-    - View › Appearance picks light, dark or the system setting; View › Transparency sets the glass.
+    - One look, after iA Writer: a monospaced face in a centred column, Markdown's marks in grey.
+    - View › Appearance picks light, dark or the system setting.
     - View › Bigger (⌘+ or ⌘=) and Smaller (⌘−) change the text size.
 
     ## Files

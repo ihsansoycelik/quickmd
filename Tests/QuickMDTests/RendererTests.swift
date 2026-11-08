@@ -75,7 +75,7 @@ struct RendererTests {
     }
 
     @Test func pageForbidsInlineScript() {
-        let page = MarkdownHTML.page(body: "", title: "t", theme: .light, fontFamily: "x", fontSize: 16, baseURL: nil)
+        let page = MarkdownHTML.page(body: "", title: "t", theme: .light, fontSize: 16, baseURL: nil)
         #expect(page.contains("Content-Security-Policy"))
         #expect(page.contains("script-src 'nonce-"))
         #expect(page.contains("connect-src 'none'"))

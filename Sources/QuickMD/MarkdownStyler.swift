@@ -30,8 +30,6 @@ extension NSAttributedString.Key {
 /// the whole document is restyled instead.
 @MainActor
 enum MarkdownStyler {
-    nonisolated static let lineHeightMultiple: CGFloat = 1.35
-
     private static let signposter = OSSignposter(subsystem: "com.ursula.quickmd", category: "styling")
 
     /// The last Style built. Building one means resolving fonts (CoreText
@@ -42,15 +40,13 @@ enum MarkdownStyler {
     private static var cachedStyle: (key: StyleKey, style: Style)?
 
     private struct StyleKey: Equatable {
-        let face: FontFace, size: CGFloat, theme: Theme, template: Template, headingFace: FontFace?
+        let size: CGFloat, theme: Theme
     }
 
-    private static func style(
-        for face: FontFace, size: CGFloat, theme: Theme, template: Template, headingFace: FontFace?
-    ) -> Style {
-        let key = StyleKey(face: face, size: size, theme: theme, template: template, headingFace: headingFace)
+    private static func style(size: CGFloat, theme: Theme) -> Style {
+        let key = StyleKey(size: size, theme: theme)
         if let cachedStyle, cachedStyle.key == key { return cachedStyle.style }
-        let style = Style(face: face, size: size, theme: theme, template: template, headingFace: headingFace)
+        let style = Style(size: size, theme: theme)
         cachedStyle = (key, style)
         return style
     }
@@ -96,23 +92,11 @@ enum MarkdownStyler {
         pattern: #"\bhttps?://(?:[^\s<>"'`()\[\]]|\([^\s<>"'`()]*\))*(?:[^\s<>"'`.,;:!?()\[\]*]|\([^\s<>"'`()]*\))"#
     )
 
-    nonisolated static func bodyParagraph() -> NSParagraphStyle {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineHeightMultiple = lineHeightMultiple
-        return paragraph
-    }
+    static func bodyFont(size: CGFloat) -> NSFont { Design.font(size: size) }
 
-    /// The body font for the current template.
-    static func bodyFont(face: FontFace, size: CGFloat, template: Template) -> NSFont {
-        template == .invisible && face == .inter ? InvisibleType(size: size).body : face.resolvedFont(size: size)
-    }
-
-    /// The body paragraph for the current template: Invisible Details
-    /// sets 160% leading.
-    static func bodyParagraph(font: NSFont, template: Template) -> NSParagraphStyle {
-        guard template != .classic else { return bodyParagraph() }
+    static func bodyParagraph(font: NSFont) -> NSParagraphStyle {
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineHeightMultiple = multiple(for: font, leading: template == .looq ? 1.4 : 1.6)
+        paragraph.lineHeightMultiple = multiple(for: font, leading: Design.leading)
         return paragraph
     }
 
@@ -133,11 +117,8 @@ enum MarkdownStyler {
     /// an edit doesn't rescan a large note; it resets on a full restyle.
     static func restyle(
         _ storage: NSTextStorage,
-        face: FontFace,
         size: CGFloat,
         theme: Theme,
-        template: Template = .classic,
-        headingFace: FontFace? = nil,
         edited: NSRange? = nil,
         chunk: NSRange? = nil,
         fenceIndex: FenceIndex? = nil
@@ -177,7 +158,7 @@ enum MarkdownStyler {
         }
         guard range.length > 0 else { return }
 
-        let style = Self.style(for: face, size: size, theme: theme, template: template, headingFace: headingFace)
+        let style = Self.style(size: size, theme: theme)
         storage.beginEditing()
         defer { storage.endEditing() }
         // Replace, not add: anything a pass applied last time has to go,
@@ -319,10 +300,7 @@ enum MarkdownStyler {
                 continue
             }
 
-            guard content.length > 0 else {
-                if let blank = style.blankParagraph { storage.addAttribute(.paragraphStyle, value: blank, range: lineRange) }
-                continue
-            }
+            guard content.length > 0 else { continue }
 
             if HorizontalRuleLayoutManager.setextLevel(underline: lineRange, in: ns) != nil {
                 storage.addAttribute(.foregroundColor, value: style.syntax, range: content)
@@ -440,7 +418,6 @@ enum MarkdownStyler {
                     .replacingOccurrences(of: "\t", with: "    ")
                 let paragraph = style.body.mutableCopy() as! NSMutableParagraphStyle
                 paragraph.headIndent = (prefix as NSString).size(withAttributes: [.font: style.base]).width + CGFloat(spaces) * step
-                if !nextBlank { paragraph.paragraphSpacing = style.listSpacing }
                 storage.addAttribute(.paragraphStyle, value: paragraph, range: lineRange)
             }
 
@@ -643,9 +620,6 @@ enum MarkdownStyler {
             guard let r = match?.range, !isCode(r) else { return }
             let current = storage.attribute(.font, at: r.location, effectiveRange: nil) as? NSFont
             storage.addAttribute(.font, value: style.adding(.bold, to: current), range: r)
-            if style.template == .invisible, storage.attribute(.qmCallout, at: r.location, effectiveRange: nil) == nil {
-                storage.addAttribute(.foregroundColor, value: style.palette.strong, range: r)
-            }
             dim(r.location, 2)
             dim(NSMaxRange(r) - 2, 2)
         }
@@ -845,12 +819,10 @@ enum MarkdownStyler {
 
     @MainActor
     private struct Style {
-        let template: Template
         let theme: Theme
         let base: NSFont
         let strongFont: NSFont
         let italic: NSFont
-        let strongItalic: NSFont?
         let mono: NSFont
         let inlineMono: NSFont
         let tableFont: NSFont
@@ -860,112 +832,49 @@ enum MarkdownStyler {
         let code: CodeColors
         let syntax: NSColor
         let done: NSColor
-        /// Behind `==marked==` text; the preview's `<mark>` colours.
         let highlight: NSColor
         let codeBackground: NSColor
         let quote: NSColor
         /// Link text colour; nil keeps body colour with an underline.
         let link: NSColor?
         let body: NSParagraphStyle
-        let blankParagraph: NSParagraphStyle?
         let quoteParagraph: NSParagraphStyle
         let calloutParagraph: NSParagraphStyle
         let tableParagraph: NSParagraphStyle
         let codeParagraph: NSParagraphStyle
         let mathParagraph: NSParagraphStyle
         let centered: NSParagraphStyle
-        let listSpacing: CGFloat
-        /// The template's design unit: 1 at the site's 15px.
-        let scale: CGFloat
-        private let invisible: InvisibleType?
-        private let headingFace: FontFace?
 
-        init(face: FontFace, size: CGFloat, theme: Theme, template: Template, headingFace: FontFace? = nil) {
-            self.template = template
-            self.headingFace = headingFace
+        init(size: CGFloat, theme: Theme) {
             self.theme = theme
-            palette = Palette.for(theme, template: template)
+            palette = Palette.for(theme)
             code = CodeColors.for(theme)
             syntax = palette.syntax
             done = palette.text.withAlphaComponent(0.45)
-            highlight = theme == .dark
-                ? NSColor(srgbRed: 0.42, green: 0.35, blue: 0.12, alpha: 0.85)
-                : NSColor(srgbRed: 1.0, green: 0.95, blue: 0.64, alpha: 1)
-            codeBackground = Palette.codeBackground(for: theme, template: template)
-            scale = size / 15
-            link = template == .looq ? LooqColors.for(theme).link : nil
-            if template == .looq {
-                // Looq: one system face throughout, upright quotes in a
-                // muted colour, inline code at 0.92em, li + li 0.25em.
-                invisible = nil
-                base = face.resolvedFont(size: size)
-                strongFont = Self.trait(base, .bold)
-                italic = Self.trait(base, .italic)
-                strongItalic = nil
-                quoteFont = base
-                quote = LooqColors.for(theme).quote
-                inlineMono = NSFont.monospacedSystemFont(ofSize: size * 0.92, weight: .regular)
-                listSpacing = (size * 0.25).rounded()
-            } else if template == .invisible {
-                let type = InvisibleType(size: size)
-                invisible = type
-                if face == .inter {
-                    base = type.body
-                    strongFont = type.strong
-                    italic = type.italic
-                    strongItalic = type.strongItalic
-                } else {
-                    base = face.resolvedFont(size: size)
-                    strongFont = Self.trait(base, .bold)
-                    italic = Self.trait(base, .italic)
-                    strongItalic = nil
-                }
-                quoteFont = headingFace.map { $0.resolvedFont(size: (17 * size / 15).rounded()) } ?? type.quote
-                quote = palette.strong
-                inlineMono = NSFont.monospacedSystemFont(ofSize: (size * 13 / 15).rounded(), weight: .medium)
-                listSpacing = (8 * scale).rounded()
-            } else {
-                invisible = nil
-                base = face.resolvedFont(size: size)
-                strongFont = Self.trait(base, .bold)
-                italic = Self.trait(base, .italic)
-                strongItalic = nil
-                quoteFont = italic
-                quote = palette.text.withAlphaComponent(0.7)
-                inlineMono = NSFont.monospacedSystemFont(ofSize: base.pointSize * 0.92, weight: .regular)
-                listSpacing = 0
-            }
-            mono = template == .looq
-                // Looq's code blocks: max(body - 2px, 11px).
-                ? NSFont.monospacedSystemFont(ofSize: max(size - 2, 11), weight: .regular)
-                : NSFont.monospacedSystemFont(ofSize: (base.pointSize * 0.86).rounded(), weight: .regular)
+            highlight = palette.highlight
+            codeBackground = palette.codeBackground
+            link = palette.link
+            base = Design.font(size: size)
+            strongFont = Design.font(size: size, weight: .semibold)
+            italic = Self.trait(base, .italic)
+            quoteFont = base
+            quote = palette.text.withAlphaComponent(0.7)
+            inlineMono = base
+            mono = Design.font(size: (size * Design.codeScale).rounded())
             tableFont = mono
-            tableHeaderFont = NSFont.monospacedSystemFont(ofSize: mono.pointSize, weight: .semibold)
-            body = MarkdownStyler.bodyParagraph(font: base, template: template)
+            tableHeaderFont = Design.font(size: mono.pointSize, weight: .semibold)
+            body = MarkdownStyler.bodyParagraph(font: base)
 
-            if template != .classic {
-                // The paragraph gap (the site's 16px, Looq's 8px), as a
-                // short blank line.
-                let blank = NSMutableParagraphStyle()
-                let gap = template == .looq ? (8 * size / 14).rounded() : (16 * scale).rounded()
-                blank.minimumLineHeight = gap
-                blank.maximumLineHeight = gap
-                blankParagraph = blank
-            } else {
-                blankParagraph = nil
-            }
-
+            let indent = (base.pointSize * 1.2).rounded()
             let quoted = body.mutableCopy() as! NSMutableParagraphStyle
-            quoted.headIndent = (base.pointSize * 0.9).rounded()
+            quoted.headIndent = indent
             quoted.firstLineHeadIndent = 0
-            if template == .invisible { quoted.lineHeightMultiple = MarkdownStyler.multiple(for: quoteFont, leading: 1.6) }
             quoteParagraph = quoted
 
-            // Looq pads code blocks 14px × 16px.
-            let pad = template == .looq ? 16 : (14 * size / 15).rounded()
+            let pad = (size * 0.9).rounded()
             let callout = body.mutableCopy() as! NSMutableParagraphStyle
             callout.firstLineHeadIndent = pad
-            callout.headIndent = pad + (base.pointSize * 0.9).rounded()
+            callout.headIndent = pad + indent
             callout.tailIndent = -pad
             calloutParagraph = callout
 
@@ -977,7 +886,7 @@ enum MarkdownStyler {
             tableParagraph = table
 
             let codeStyle = NSMutableParagraphStyle()
-            codeStyle.lineHeightMultiple = MarkdownStyler.multiple(for: mono, leading: template == .looq ? 1.4 : 1.6)
+            codeStyle.lineHeightMultiple = MarkdownStyler.multiple(for: mono, leading: 1.5)
             codeStyle.firstLineHeadIndent = pad
             codeStyle.headIndent = pad
             codeStyle.tailIndent = -pad
@@ -992,78 +901,25 @@ enum MarkdownStyler {
             centered = center
         }
 
-        /// Classic: H1 and H2 step up in size; H3 and below are bold at
-        /// (nearly) body size. Invisible Details: Nanum Myeongjo at the
-        /// site's 24/20/17px, H4 and below regular at body size.
         func heading(level: Int) -> NSFont {
-            if let invisible {
-                guard let headingFace else { return invisible.heading(level) }
-                let sizes: [CGFloat] = [24, 20, 17]
-                guard level <= 3 else { return headingFace.resolvedFont(size: base.pointSize) }
-                return headingFace.boldFont(size: (sizes[level - 1] * scale).rounded())
-            }
-            if template == .looq {
-                // Looq: 2.25em / 1.6em / 1.32em, bold, the body face.
-                let sizes: [CGFloat] = [2.25, 1.6, 1.32]
-                let size = base.pointSize * (level <= 3 ? sizes[level - 1] : 1)
-                return (headingFace ?? FontFace(rawValue: "system")).boldFont(size: size)
-            }
-            let scale: CGFloat
-            switch level {
-            case 1: scale = 1.40
-            case 2: scale = 1.20
-            case 3: scale = 1.05
-            default: scale = 1.0
-            }
-            if let headingFace { return headingFace.boldFont(size: (base.pointSize * scale).rounded()) }
-            let descriptor = base.fontDescriptor.withSymbolicTraits(.bold)
-            return NSFont(descriptor: descriptor, size: (base.pointSize * scale).rounded()) ?? strongFont
+            let factor = level <= Design.headingScale.count ? Design.headingScale[level - 1] : 1
+            return Design.font(size: (base.pointSize * factor).rounded(), weight: .bold)
         }
 
-        func headingColor(level: Int) -> NSColor {
-            template == .invisible && level >= 4 ? palette.text : palette.strong
-        }
+        func headingColor(level: Int) -> NSColor { palette.strong }
 
-        /// The site gives H1–H3 64px above and 16px below; a blank line
-        /// in the source already supplies 16 of either.
+        /// A blank source line already gives the gap below; headings
+        /// get a little extra air above.
         func headingParagraph(level: Int, first: Bool, previousBlank: Bool, nextBlank: Bool) -> NSParagraphStyle {
             let paragraph = NSMutableParagraphStyle()
-            if template == .looq {
-                // 1.2 leading, 1.5em above and 0.55em below; a blank
-                // source line already gives one paragraph gap (CSS
-                // margins collapse, so the larger one wins).
-                let font = heading(level: level)
-                paragraph.lineHeightMultiple = MarkdownStyler.multiple(for: font, leading: 1.2)
-                let gap = (8 * base.pointSize / 14).rounded()
-                let above = (font.pointSize * 1.5).rounded(), below = (font.pointSize * 0.55).rounded()
-                paragraph.paragraphSpacingBefore = first ? 0 : max(0, above - (previousBlank ? gap : 0))
-                paragraph.paragraphSpacing = max(0, below - (nextBlank ? gap : 0))
-            } else if template == .invisible {
-                let font = heading(level: level)
-                paragraph.lineHeightMultiple = MarkdownStyler.multiple(for: font, leading: level <= 3 ? 1.15 : 1.6)
-                let blank = (16 * scale).rounded()
-                let above = level <= 3 ? (64 * scale).rounded() : blank
-                paragraph.paragraphSpacingBefore = first ? 0 : max(0, above - (previousBlank ? blank : 0))
-                paragraph.paragraphSpacing = nextBlank ? 0 : blank
-            } else {
-                paragraph.lineHeightMultiple = MarkdownStyler.lineHeightMultiple
-                paragraph.paragraphSpacingBefore = (base.pointSize * 0.4).rounded()
-            }
+            paragraph.lineHeightMultiple = MarkdownStyler.multiple(for: heading(level: level), leading: 1.4)
+            paragraph.paragraphSpacingBefore = first ? 0 : (base.pointSize * 0.5).rounded()
             return paragraph
         }
 
         func adding(_ traits: NSFontDescriptor.SymbolicTraits, to current: NSFont?) -> NSFont {
-            if template == .invisible, let strongItalic {
-                let isBase = current == nil || current == base
-                if traits == .bold {
-                    if isBase { return strongFont }
-                    if current == italic { return strongItalic }
-                } else if traits == .italic {
-                    if isBase { return italic }
-                    if current == strongFont { return strongItalic }
-                }
-            }
             guard let current, current != base else { return traits == .bold ? strongFont : italic }
+            if traits == .bold { return Design.font(size: current.pointSize, weight: .semibold) }
             return Self.trait(current, traits)
         }
 

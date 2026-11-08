@@ -3,9 +3,9 @@
 A native macOS Markdown editor. Opens `.md` files from Finder and Quick Look ("Open with QuickMD").
 
 - Live-styled editing: headings, bold/italic/strike, code, quotes, lists, tasks, links, rules. The file stays plain Markdown.
-- Invisible Details template (default, Format › Template): Inter body in grey at 160% leading, Myeongjo serif headings, 16pt paragraph gaps, after invisibledetails.com. Classic keeps the old look and the Font menu.
+- One look, after iA Writer: SF Mono in a 64-character column centred in the window, generous leading, a blue caret, Markdown marks in grey. Light, dark or system. No themes, fonts or transparency to pick.
 - Tables (Tab / ⇧Tab moves between cells and lines up the columns; Tab past the end adds a row), real checkboxes for tasks, GitHub callouts (`> [!TIP]`), `$…$` / `$$…$$` math, Mermaid diagrams and syntax-coloured code blocks. Export and print typeset math (KaTeX) and diagrams (Mermaid) offline.
-- One view for reading and writing: the note shows itself styled, and the line the caret is in shows its Markdown, ready to edit. Outline sidebar (⌃⌘S), a footer that counts words, characters or reading time (click it), and a unified toolbar: outline toggle, Format menu, Share.
+- One view for reading and writing: the note shows itself styled, and the line the caret is in shows its Markdown, ready to edit. No sidebar, no toolbar, no footer.
 - Smart lists: Return continues a list, Tab/⇧Tab indents, click a `[ ]` to tick it.
 - ⌘-click a link to open it; relative `.md` links open in QuickMD, `#anchor` links jump to the heading.
 - Type `*`, `` ` ``, `[`, `(` … over a selection to wrap it; paste a URL over words to link them; drop files or images in to link them.
@@ -54,7 +54,7 @@ Mac App Store: `TEAM_ID=… SIGN_IDENTITY="Apple Distribution: …" INSTALLER_ID
 
 `QuickMD --render file.md` prints a file as HTML (`--page [--dark]` for a whole page). Not in the App Store build.
 
-Bundled: Inter (OFL), QuickMD Myeongjo (OFL; a renamed Latin subset of Nanum Myeongjo), KaTeX (MIT), Mermaid (MIT), in `Resources/`, each with its license.
+Bundled: KaTeX (MIT), Mermaid (MIT), in `Resources/`, each with its license.
 
 ## Credits
 

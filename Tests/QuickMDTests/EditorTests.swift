@@ -127,11 +127,11 @@ struct EditorTests {
         #expect(String(data: saved, encoding: .utf8) == "| a | b |\r\n| - | - |\r\nintro\r\n")
     }
 
-    // MARK: Outline
+    // MARK: Headings
 
-    @Test func outlineMatchesTheRenderer() {
+    @Test func headingsMatchTheRenderer() {
         let note = "---\ntitle: x\n---\nTitle\n=====\n\n  ## Indented\n\n```\n~~~\n# not a heading\n```\n\nSub\n---\n"
-        let titles = Outline.headings(in: note).map(\.title)
+        let titles = Headings.find(in: note).map(\.title)
         #expect(titles == ["Title", "Indented", "Sub"])
     }
 

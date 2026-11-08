@@ -1057,32 +1057,22 @@ enum MarkdownHTML {
         return replace(css, #"url\((fonts/[^)]+)\)"#) { m in "url(\(dataURI("katex/" + m[1]) ?? "data:,"))" }
     }
 
-    private static func hex(_ color: NSColor) -> String {
-        let c = color.usingColorSpace(.sRGB) ?? .gray
-        return String(format: "#%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
-    }
+    private static func hex(_ color: NSColor) -> String { cssHex(color) }
 
-    /// A full HTML page around rendered markdown.
+    /// A full HTML page around rendered markdown, in the editor's one
+    /// look (`Design`, `Palette`): monospaced, a 64ch column, grey marks.
     static func page(
-        body: String, title: String, theme: Theme, template: Template = .classic,
-        fontFamily: String, headingFamily: String? = nil, fontSize: CGFloat, baseURL: URL?, transparent: Bool = false,
-        assets: Assets = .cdn
+        body: String, title: String, theme: Theme, fontSize: CGFloat, baseURL: URL?,
+        transparent: Bool = false, assets: Assets = .cdn
     ) -> String {
         let base = baseURL.map { "<base href=\"\(escape($0.absoluteString))\">" } ?? ""
         let dark = theme == .dark
-        let invisible = template == .invisible
-        let looq = template == .looq
         let size = Int(fontSize.rounded())
         let code = CodeColors.for(theme)
-        let lq = LooqColors.for(theme).css
-
-        // Colours: body text, headings/bold, hairlines, panels, page.
-        let prose = looq ? lq["text"]! : invisible ? (dark ? "#D6D6D6" : "#525252") : (dark ? "#F2EDE3" : "#1A1A1A")
-        let primary = looq ? lq["heading"]! : invisible ? (dark ? "#FFFFFF" : "#000000") : prose
-        let muted = looq ? lq["secondary"]! : dark ? "rgba(255,255,255,.45)" : "rgba(0,0,0,.4)"
-        let border = dark ? "rgba(255,255,255,.12)" : "rgba(0,0,0,.10)"
-        let panel = looq ? lq["codeBg"]! : dark ? "rgba(255,255,255,.055)" : "rgba(0,0,0,.035)"
-        let ground = transparent ? "transparent" : looq ? lq["bg"]! : invisible ? (dark ? "#26292B" : "#FFFFFF") : (dark ? "#1C1C1C" : "#FEFEFE")
+        let p = Palette.for(theme)
+        let prose = hex(p.text), primary = hex(p.strong), muted = hex(p.syntax), border = hex(p.divider)
+        let panel = dark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.045)"
+        let ground = transparent ? "transparent" : hex(p.background)
 
         // Scripts run only with this page's nonce: nothing a note
         // smuggles in can execute, nor fetch, frame or submit anything.
@@ -1093,26 +1083,6 @@ enum MarkdownHTML {
         style-src 'unsafe-inline' \(local) https:; font-src \(local) data: https:; img-src * \(local) data: blob:; \
         media-src * \(local); connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri \(local)">
         """
-        // The bundled faces are declared for both styles: the web view
-        // can't see fonts registered in the app, and declaring is free
-        // until a face is used.
-        let fontFiles = [
-            ("Inter", "Inter.ttf", "font-weight: 100 900; font-style: normal"),
-            ("Inter", "Inter-Italic.ttf", "font-weight: 100 900; font-style: italic"),
-            ("QuickMD Myeongjo", "QuickMDMyeongjo-Regular.ttf", "font-weight: 400"),
-            ("QuickMD Myeongjo", "QuickMDMyeongjo-Bold.ttf", "font-weight: 700"),
-        ]
-        let families = fontFamily + (headingFamily ?? "")
-        let usesBundledFaces = invisible || families.contains("Inter") || families.contains("Myeongjo")
-        if assets == .preview || (assets == .embedded && usesBundledFaces) {
-            let faces = fontFiles.compactMap { family, file, style -> String? in
-                guard let url = asset("Fonts/\(file)", cdn: "", assets), !url.isEmpty else { return nil }
-                return "@font-face { font-family: \"\(family)\"; src: url(\"\(url)\"); \(style); }"
-            }
-            head += "<style>\n\(faces.joined(separator: "\n"))\n</style>"
-        } else if assets == .cdn && usesBundledFaces {
-            head += #"<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400..600;1,14..32,400..600&family=Nanum+Myeongjo:wght@400;700&display=swap">"#
-        }
         let hasMath = body.contains("class=\"math")
         let hasMermaid = body.contains("class=\"mermaid\"")
         if hasMath, assets == .embedded, let style = embeddedKaTeXStyle(), let js = dataURI("katex/katex.min.js") {
@@ -1129,162 +1099,19 @@ enum MarkdownHTML {
 
         let callouts = CalloutKind.allCases.map { ".callout-\($0.rawValue) { --c: \($0.css(for: theme)); }" }.joined(separator: " ")
 
-        let templateCSS: String
-        // Looq's rules come after the shared ones, so they win.
-        var lateCSS = ""
-        if looq {
-            // A reading page modelled on MarkView: a centred column, quiet
-            // properties, code under a bar, gridded tables, open callouts.
-            let v: [String: String] = dark
-                ? ["border": "#2E333D", "panel": "#1C2026", "icode": "#1A1E23", "icodeBorder": "#2A2F37",
-                   "codeBg": "#1E1E1E", "codeBar": "#202020", "codeBorder": "#333333", "codeLabel": "#8C8C8C",
-                   "faint": "#5F646F", "accent": "#4E80EE", "quote": "#3A3F48"]
-                : ["border": "#D8DEE4", "panel": "#F6F8FA", "icode": "#F3F4F6", "icodeBorder": "#E1E4E8",
-                   "codeBg": "#F6F8FA", "codeBar": "#EFF1F3", "codeBorder": "#D8DEE4", "codeLabel": "#6E7781",
-                   "faint": "#8C959F", "accent": "#2F6FEB", "quote": "#D0D7DE"]
-            templateCSS = """
-            :root { --bg: \(lq["bg"]!); --text: \(lq["text"]!); --heading: \(lq["heading"]!); --muted: \(lq["secondary"]!);
-              --faint: \(v["faint"]!); --link: \(lq["link"]!); --border: \(v["border"]!); --panel: \(v["panel"]!);
-              --icode: \(v["icode"]!); --icode-border: \(v["icodeBorder"]!); --code-bg: \(v["codeBg"]!);
-              --code-bar: \(v["codeBar"]!); --code-border: \(v["codeBorder"]!); --code-label: \(v["codeLabel"]!);
-              --accent: \(v["accent"]!); --quote: \(v["quote"]!); --body-size: \(size)px; }
-            """
-            lateCSS = """
-            body { max-width: 780px; box-sizing: border-box; padding: 48px 40px 120px;
-              color: var(--text); font-family: \(fontFamily), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-              font-size: var(--body-size); font-weight: 400; line-height: 1.65; }
-            h1, h2, h3, h4, h5, h6 { color: var(--heading); font-weight: 700; line-height: 1.25; letter-spacing: -0.012em;
-              margin: 1.7em 0 0.5em;\(headingFamily.map { " font-family: \($0), -apple-system, sans-serif;" } ?? "") }
-            h1 { font-size: 2.1em; letter-spacing: -0.02em; margin-top: 1.2em; } h2 { font-size: 1.55em; }
-            h3 { font-size: 1.25em; } h4 { font-size: 1.05em; } h5, h6 { font-size: 1em; } h6 { color: var(--muted); }
-            p, ul, ol, dl { margin: 0 0 0.85em; }
-            strong { color: var(--heading); font-weight: 650; }
-            a { color: var(--link); text-decoration: none; } a:hover { text-decoration: underline; }
-            ul, ol { padding-left: 2.1em; } li + li { margin-top: 0.3em; } li > ul, li > ol { margin: 0.3em 0 0; }
-            li > p { margin-bottom: 0.4em; } li::marker { color: var(--text); }
-            blockquote { margin: 0 0 1em; padding: 0.1em 0 0.1em 1.25em; border-left: 3px solid var(--quote); color: var(--muted); }
-            blockquote > :last-child { margin-bottom: 0; }
-            hr { border: 0; border-top: 1px solid var(--border); margin: 2.2em 0; }
-            code, pre, kbd { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; }
-            :not(pre) > code { font-size: 0.86em; background: var(--icode); border: 1px solid var(--icode-border);
-              border-radius: 5px; padding: 0.12em 0.4em; color: var(--heading); box-shadow: none; white-space: break-spaces; }
-            kbd { font-size: 0.82em; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 0.05em 0.4em; }
-            .codeblock { margin: 1.2em 0 1.5em; background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 9px; overflow: hidden; }
-            .codebar { display: flex; align-items: center; justify-content: space-between; height: 2.1em; padding: 0 0.7em 0 1.15em;
-              background: var(--code-bar); border-bottom: 1px solid var(--code-border); }
-            .codelang { font: 0.78em ui-monospace, "SF Mono", Menlo, monospace; color: var(--code-label); letter-spacing: 0.02em; }
-            .copy { display: grid; place-items: center; width: 1.8em; height: 1.8em; padding: 0; border: 0; border-radius: 5px;
-              background: none; color: var(--code-label); cursor: pointer; }
-            .copy:hover { background: color-mix(in srgb, var(--code-label) 16%, transparent); color: var(--text); }
-            .copy .icon { width: 1.05em; height: 1.05em; grid-area: 1 / 1; } .copy .icon + .icon { display: none; }
-            .copy.copied .icon:first-child { display: none; } .copy.copied .icon + .icon { display: block; color: #3FB950; }
-            .codeblock pre { margin: 0; background: none; border-radius: 0; padding: 1.1em 1.15em 1.2em; overflow-x: auto;
-              font-size: 0.86em; line-height: 1.7; white-space: pre; }
-            .codeblock pre code { color: var(--text); }
-            pre { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 9px; font-size: 0.86em; line-height: 1.7; }
-            .codeblock pre, pre.mermaid { border: 0; }
-            .table-wrap { margin: 1.2em 0 1.5em; overflow-x: auto; border: 1px solid var(--border); }
-            .table-wrap table { margin: 0; border: 0; border-radius: 0; overflow: visible; width: 100%; border-collapse: collapse; }
-            th, td { border: 0; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
-              padding: 0.55em 0.95em; text-align: left; vertical-align: top; }
-            tr > :last-child { border-right: 0; } tbody tr:last-child > * { border-bottom: 0; }
-            th { background: var(--panel); color: var(--heading); font-weight: 600; }
-            table.compact th, table.compact td { white-space: nowrap; }
-            img { display: block; height: auto; margin: 1em auto; border-radius: 6px; }
-            mark { background: color-mix(in srgb, #E3B341 30%, transparent); color: var(--heading); padding: 0.05em 0.2em; border-radius: 3px; }
-            ul.contains-task-list { list-style: none; padding-left: 1.6em; }
-            ul.contains-task-list ul.contains-task-list { padding-left: 1.9em; }
-            ul.contains-task-list > li + li { margin-top: 0.4em; }
-            li.task-list-item input { width: 1.2em; height: 1.2em; margin: 0 0.75em 0 0; vertical-align: -0.22em;
-              border: 1.5px solid var(--muted); border-radius: 0.3em; }
-            li.task-list-item input:checked { background: var(--accent); border-color: var(--accent); }
-            li.task-list-item input:checked::after { width: 0.5em; height: 0.27em; border-width: 0 0 0.13em 0.13em; }
-            li.task-list-item:has(> input:checked) { color: var(--text); text-decoration: none; }
-            .callout { margin: 1.1em 0 1.3em; padding: 0.15em 0 0.15em 1.25em; border-left: 3px solid var(--c); border-radius: 0; background: none; }
-            .callout-title { display: flex; align-items: center; gap: 0.45em; margin: 0 0 0.45em; font-size: 1em; font-weight: 600; color: var(--c); }
-            .callout-title .icon { width: 1.05em; height: 1.05em; flex: none; }
-            .properties { margin: 0 0 2.4em; padding-bottom: 1.5em; border-bottom: 1px solid var(--border); font-size: 0.875em; }
-            .prop { display: grid; grid-template-columns: minmax(8em, 16.5em) 1fr; align-items: baseline; padding: 0.45em 0; }
-            .prop-key { display: flex; align-items: center; gap: 0.75em; color: var(--muted); }
-            .prop-key .icon { width: 1.15em; height: 1.15em; flex: none; color: var(--faint); transform: translateY(0.1em); }
-            .prop-value { color: var(--text); overflow-wrap: anywhere; }
-            .properties + h1 { margin-top: 0; }
-            pre.mermaid { background: none !important; padding: 1em 0; margin: 1.2em 0 1.5em; }
-            pre.mermaid .node rect, pre.mermaid .node polygon, pre.mermaid .node circle, pre.mermaid .node path { rx: 6px; ry: 6px; }
-            .math-display { margin: 1em 0 1.2em; }
-            .katex { color: var(--heading); font-size: 1.08em; }
-            body { overflow-wrap: break-word; }
-            .chip { display: inline-block; margin: 0.1em 0.35em 0.1em 0; padding: 0.05em 0.6em; border-radius: 999px;
-              background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--heading); font-size: 0.95em; line-height: 1.6; }
-            .prop-sub { color: var(--muted); } .prop-empty { color: var(--faint); }
-            .prop-value input { -webkit-appearance: none; appearance: none; box-sizing: border-box; display: inline-grid; place-content: center;
-              width: 1.15em; height: 1.15em; margin: 0; vertical-align: -0.2em; border: 1.5px solid var(--muted); border-radius: 0.3em; }
-            .prop-value input:checked { background: var(--accent); border-color: var(--accent); }
-            .prop-value input:checked::after { content: ""; width: 0.48em; height: 0.26em; border: solid #fff;
-              border-width: 0 0 0.13em 0.13em; transform: translateY(-0.05em) rotate(-45deg); }
-            .prop-value a { overflow-wrap: anywhere; }
-            details { margin: 0 0 1em; } summary { cursor: pointer; }
-            details > summary::marker { color: var(--muted); }
-            details.callout > summary { list-style: none; } details.callout > summary::-webkit-details-marker { display: none; }
-            details.callout > summary::after { content: ""; width: 0.42em; height: 0.42em; margin-left: 0.15em;
-              border: solid currentColor; border-width: 0 0.12em 0.12em 0; transform: rotate(-45deg); transition: transform .15s; }
-            details.callout[open] > summary::after { transform: translateY(-0.12em) rotate(45deg); }
-            details.callout:not([open]) > summary { margin-bottom: 0; }
-            a.wikilink { color: var(--link); border-bottom: 1px dashed color-mix(in srgb, var(--link) 45%, transparent); }
-            a.wikilink:hover { text-decoration: none; border-bottom-style: solid; }
-            sup.fnref { font-size: 0.72em; line-height: 0; margin-left: 0.1em; }
-            sup.fnref a { padding: 0 0.15em; }
-            .footnotes { margin-top: 3em; padding-top: 1.2em; border-top: 1px solid var(--border); font-size: 0.875em; color: var(--muted); }
-            .footnotes ol { padding-left: 1.6em; } .footnotes li { margin-top: 0.35em; } .footnotes p { margin: 0; }
-            .footnotes li:target { color: var(--text); } a.fnback { margin-left: 0.25em; }
-            :target { scroll-margin-top: 24px; }
-            .dl { display: block; margin: 0 -1.15em; padding: 0 1.15em; }
-            .dl-add { background: color-mix(in srgb, #3FB950 15%, transparent); color: \(dark ? "#9BE9A8" : "#116329"); }
-            .dl-del { background: color-mix(in srgb, #F85149 15%, transparent); color: \(dark ? "#FFA198" : "#82071E"); }
-            .dl-hunk { color: \(dark ? "#79C0FF" : "#0550AE"); } .dl-meta { color: var(--muted); font-weight: 600; }
-            .codeblock pre:has(.dl) { padding-left: 1.15em; padding-right: 1.15em; }
-            ul.contains-task-list > li:not(.task-list-item) { list-style: disc; margin-left: 0.5em; }
-            .table-wrap td { min-width: 3em; }
-            @media print { .codebar .copy { display: none; } .codeblock, pre, table { break-inside: avoid; } details { display: block; } }
-            """
-        } else if invisible {
-            // invisibledetails.com's lesson prose, scaled from its 15px.
-            templateCSS = """
-            :root { --s: calc(\(size) / 15); }
-            body { max-width: 30em; font: \(size)px/1.6 \(fontFamily), Inter, -apple-system, system-ui, sans-serif;
-              font-optical-sizing: auto; }
-            p { margin: 0 0 calc(16px * var(--s)); }
-            h1, h2, h3, h4, h5, h6 { font-family: \(headingFamily.map { $0 + ", " } ?? "")"QuickMD Myeongjo", "Nanum Myeongjo", Georgia, "Times New Roman", serif; color: \(primary); }
-            h1, h2, h3 { font-weight: 700; line-height: 1.1; margin: calc(64px * var(--s)) 0 calc(16px * var(--s)); }
-            h1 { font-size: calc(24px * var(--s)); } h2 { font-size: calc(20px * var(--s)); } h3 { font-size: calc(17px * var(--s)); }
-            h4, h5, h6 { font-weight: 400; font-size: 1em; line-height: 1.6; color: \(prose); margin: calc(16px * var(--s)) 0; }
-            strong { font-weight: 500; color: \(primary); }
-            ul, ol { margin: 0 0 calc(16px * var(--s)); padding-left: calc(24px * var(--s)); }
-            li { margin-bottom: calc(8px * var(--s)); } li:last-child { margin-bottom: 0; }
-            li > ul, li > ol { margin: calc(8px * var(--s)) 0 0; }
-            ol > li::marker { color: \(primary); font-weight: 500; }
-            blockquote { font-family: \(headingFamily.map { $0 + ", " } ?? "")"QuickMD Myeongjo", "Nanum Myeongjo", Georgia, serif; font-size: calc(17px * var(--s)); color: \(primary);
-              margin: calc(24px * var(--s)) 0; padding: 0; border: 0; }
-            hr { border: 0; border-top: 1px solid \(border); margin: calc(32px * var(--s)) 0; }
-            a { color: \(primary); text-decoration: underline; text-decoration-color: \(border); text-underline-offset: 3px; }
-            a:hover { text-decoration-color: currentColor; }
-            code { font: 500 calc(13px * var(--s))/1 ui-monospace, "SF Mono", Menlo, monospace; color: \(primary);
-              box-shadow: inset 0 0 0 .5px \(dark ? "rgba(255,255,255,.3)" : "rgba(0,0,0,.25)"); border-radius: 4px; padding: .2em .35em; }
-            pre, pre code { font-size: calc(13px * var(--s)); }
-            """
-        } else {
-            templateCSS = """
-            body { max-width: 46em; font: \(size)px/1.6 \(fontFamily), Charter, Georgia, serif; }
-            h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.6em 0 0.5em;\(headingFamily.map { " font-family: \($0), serif;" } ?? "") }
-            h1 { font-size: 1.8em; } h2 { font-size: 1.4em; } h3 { font-size: 1.15em; } h4, h5, h6 { font-size: 1em; }
-            a { color: \(dark ? "#8ab4ff" : "#1f5fd1"); text-decoration: none; }
-            a:hover { text-decoration: underline; }
-            code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em; background: \(panel); padding: .1em .35em; border-radius: 4px; }
-            pre { font-size: 0.88em; }
-            blockquote { margin: 1em 0; padding: 0 1em; border-left: 3px solid \(dark ? "#555" : "#d0d0d0"); color: \(dark ? "#bdb8ae" : "#555"); }
-            hr { border: 0; border-top: 1px solid \(dark ? "#444" : "#ddd"); margin: 2em 0; }
-            """
-        }
+        let designCSS = """
+        body { max-width: 64ch; font: \(size)px/\(Design.leading) \(Design.cssFamily); }
+        h1, h2, h3, h4, h5, h6 { color: \(primary); font-weight: 700; line-height: 1.4; margin: 1.6em 0 0.6em; }
+        h1 { font-size: \(Design.headingScale[0])em; } h2 { font-size: \(Design.headingScale[1])em; } h3, h4, h5, h6 { font-size: 1em; }
+        p, ul, ol, dl { margin: 0 0 1em; }
+        strong { color: \(primary); font-weight: 600; }
+        a { color: \(hex(p.link)); text-decoration: none; } a:hover { text-decoration: underline; }
+        ul, ol { padding-left: 2ch; }
+        code { font: inherit; background: \(panel); padding: .05em .3em; border-radius: 3px; }
+        pre { font-size: \(Design.codeScale)em; }
+        blockquote { margin: 0 0 1em; padding: 0 0 0 1.2em; border-left: 2px solid \(border); color: \(muted); }
+        hr { border: 0; border-top: 1px solid \(border); margin: 2em 0; }
+        """
 
         return """
         <!doctype html>
@@ -1297,7 +1124,7 @@ enum MarkdownHTML {
         :root { color-scheme: \(dark ? "dark" : "light"); }
         body { margin: 0 auto; padding: 32px 28px 80px; color: \(prose); background: \(ground);
           -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
-        \(templateCSS)
+        \(designCSS)
         body > :first-child { margin-top: 0; }
         img { max-width: 100%; }
         mark { background: \(dark ? "#6b5a1e" : "#fff3a3"); color: inherit; }
@@ -1310,7 +1137,7 @@ enum MarkdownHTML {
           border: 1px solid \(border); border-radius: 10px; overflow: hidden; }
         th, td { padding: 6px 16px; text-align: left; border-bottom: 1px solid \(border); }
         tr:last-child td { border-bottom: 0; }
-        th { background: \(panel); color: \(primary); font-weight: \(invisible ? 500 : 600); }
+        th { background: \(panel); color: \(primary); font-weight: 600; }
         ul.contains-task-list { list-style: none; padding-left: 0; }
         ul.contains-task-list ul.contains-task-list { padding-left: 1.6em; }
         li.task-list-item input { -webkit-appearance: none; appearance: none; box-sizing: border-box; width: 1.1em; height: 1.1em;
@@ -1340,7 +1167,6 @@ enum MarkdownHTML {
         .prop-key { display: flex; align-items: center; gap: .6em; color: \(muted); }
         .prop-value { overflow-wrap: anywhere; }
         @media print { .copy { display: none; } }
-        \(lateCSS)
         .math-display { display: block; text-align: center; margin: 0 0 16px; overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
         .math-display .katex-display { margin: 0; }
         p > .math-display { margin: 8px 0; }
@@ -1393,9 +1219,9 @@ enum MarkdownHTML {
             : "['#4E79A7','#F28E2B','#59A14F','#E15759','#76B7B2','#C9A227','#B07AA1','#FF9DA7','#9C755F','#8E8A86','#5FA39C','#B784A7']");
           function configure() {
             var box = document.querySelector('pre.mermaid'), width = box ? box.clientWidth - 40 : 800;
-            var vars = { background: 'transparent', primaryColor: '\(looq ? (dark ? "#233253" : "#E8EEFB") : dark ? "#26292B" : "#FFFFFF")',
-              primaryBorderColor: '\(looq ? (dark ? "#4A68AD" : "#7D9BE0") : dark ? "#E5E5E5" : "#1A1A1A")', primaryTextColor: '\(primary)',
-              lineColor: '\(looq ? (dark ? "#7F8693" : "#8C959F") : prose)', textColor: '\(prose)', fontSize: '\(max(13, size - 1))px',
+            var vars = { background: 'transparent', primaryColor: '\(ground == "transparent" ? (dark ? "#1A1A1A" : "#F7F7F7") : ground)',
+              primaryBorderColor: '\(muted)', primaryTextColor: '\(primary)',
+              lineColor: '\(muted)', textColor: '\(prose)', fontSize: '\(max(13, size - 1))px',
               secondaryColor: '\(dark ? "#33373A" : "#F4F5F5")', tertiaryColor: '\(dark ? "#1D2022" : "#FAFAFA")',
               pieStrokeColor: '\(dark ? "#1C1C1C" : "#FFFFFF")', pieStrokeWidth: '1.5px', pieOuterStrokeWidth: '0', pieOuterStrokeColor: 'transparent',
               pieSectionTextColor: '#FFFFFF', pieTitleTextColor: '\(primary)', pieLegendTextColor: '\(prose)', pieOpacity: '1',
@@ -1409,7 +1235,7 @@ enum MarkdownHTML {
                 yAxisLabelColor: '\(prose)', yAxisTitleColor: '\(prose)', yAxisTickColor: '\(prose)', yAxisLineColor: '\(prose)' } };
             palette.forEach(function (c, i) { vars['pie' + (i + 1)] = c; vars['cScale' + i] = c; vars['cScaleLabel' + i] = '#FFFFFF'; });
             mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true, theme: 'base',
-              fontFamily: '\(invisible ? "Inter, " : "")-apple-system, sans-serif', themeVariables: vars,
+              fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', themeVariables: vars,
               gantt: { useWidth: Math.max(width, 400) } });
           }
           // Right away too: it also turns off Mermaid's own run on load.
