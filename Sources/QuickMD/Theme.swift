@@ -14,9 +14,9 @@ enum ThemePreference: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .light: return "Light"
-        case .dark: return "Dark"
-        case .system: return "System"
+        case .light: return L("Light")
+        case .dark: return L("Dark")
+        case .system: return L("System")
         }
     }
 
@@ -104,7 +104,7 @@ enum CalloutKind: String, CaseIterable {
         }
     }
 
-    var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    var title: String { L(rawValue.prefix(1).uppercased() + rawValue.dropFirst()) }
 
     func color(for theme: Theme) -> NSColor {
         let dark = theme == .dark

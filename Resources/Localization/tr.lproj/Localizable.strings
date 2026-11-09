@@ -1,0 +1,164 @@
+/* QuickMD — Türkçe */
+
+/* App menu */
+"QuickMD" = "QuickMD";
+"About QuickMD" = "QuickMD Hakkında";
+"Settings…" = "Ayarlar…";
+"Default App for Markdown" = "Markdown için Varsayılan Uygulama";
+"Services" = "Servisler";
+"Hide QuickMD" = "QuickMD’yi Gizle";
+"Hide Others" = "Diğerlerini Gizle";
+"Show All" = "Tümünü Göster";
+"Quit QuickMD" = "QuickMD’den Çık";
+
+/* File */
+"File" = "Dosya";
+"New" = "Yeni";
+"New Tab" = "Yeni Sekme";
+"New from Template" = "Şablondan Yeni";
+"Open…" = "Aç…";
+"Close" = "Kapat";
+"Save" = "Kaydet";
+"Duplicate" = "Çoğalt";
+"Save As…" = "Farklı Kaydet…";
+"Rename…" = "Yeniden Adlandır…";
+"Move To…" = "Taşı…";
+"Revert To Saved" = "Kaydedilmiş Sürüme Dön";
+"Export as HTML…" = "HTML Olarak Dışa Aktar…";
+"Export as PDF…" = "PDF Olarak Dışa Aktar…";
+"Page Setup…" = "Sayfa Yapısı…";
+"Print…" = "Yazdır…";
+
+/* Edit */
+"Edit" = "Düzen";
+"Undo" = "Geri Al";
+"Redo" = "Yinele";
+"Cut" = "Kes";
+"Copy" = "Kopyala";
+"Copy as HTML" = "HTML Olarak Kopyala";
+"Paste" = "Yapıştır";
+"Paste and Match Style" = "Yapıştır ve Stili Eşleştir";
+"Delete" = "Sil";
+"Select All" = "Tümünü Seç";
+"Find" = "Bul";
+"Find…" = "Bul…";
+"Find and Replace…" = "Bul ve Değiştir…";
+"Find Next" = "Sonrakini Bul";
+"Find Previous" = "Öncekini Bul";
+"Use Selection for Find" = "Bulmak İçin Seçileni Kullan";
+"Jump to Selection" = "Seçilene Atla";
+"Spelling and Grammar" = "Yazım ve Dilbilgisi";
+"Show Spelling and Grammar" = "Yazım ve Dilbilgisini Göster";
+"Check Document Now" = "Belgeyi Şimdi Denetle";
+"Check Spelling While Typing" = "Yazarken Yazımı Denetle";
+"Substitutions" = "Yerine Koymalar";
+"Smart Quotes" = "Akıllı Tırnaklar";
+"Smart Dashes" = "Akıllı Tireler";
+"Text Replacement" = "Metin Değiştirme";
+"Transformations" = "Dönüşümler";
+"Make Upper Case" = "Büyük Harf Yap";
+"Make Lower Case" = "Küçük Harf Yap";
+"Capitalize" = "Baş Harfleri Büyük Yap";
+"Speech" = "Konuşma";
+"Start Speaking" = "Konuşmayı Başlat";
+"Stop Speaking" = "Konuşmayı Durdur";
+
+/* Format */
+"Format" = "Biçim";
+"Bold" = "Kalın";
+"Italic" = "İtalik";
+"Strikethrough" = "Üstü Çizili";
+"Inline Code" = "Satır İçi Kod";
+"Link" = "Bağlantı";
+"Heading %d" = "Başlık %d";
+"Heading 1" = "Başlık 1";
+"Heading 2" = "Başlık 2";
+"Heading 3" = "Başlık 3";
+"Body Text" = "Gövde Metni";
+"Text" = "Metin";
+"Bulleted List" = "Madde İşaretli Liste";
+"Numbered List" = "Numaralı Liste";
+"Task List" = "Görev Listesi";
+"Mark Task Done" = "Görevi Tamamla";
+"Quote" = "Alıntı";
+"Code Block" = "Kod Bloğu";
+"Horizontal Rule" = "Yatay Çizgi";
+"Table" = "Tablo";
+"Callout" = "Bilgi Kutusu";
+"Note" = "Not";
+"Tip" = "İpucu";
+"Important" = "Önemli";
+"Warning" = "Uyarı";
+"Caution" = "Dikkat";
+"Math Block" = "Matematik Bloğu";
+"Mermaid Diagram" = "Mermaid Diyagramı";
+"Indent" = "Girintiyi Artır";
+"Outdent" = "Girintiyi Azalt";
+"Insert block" = "Blok ekle";
+
+/* View */
+"View" = "Görüntü";
+"Bigger" = "Büyüt";
+"Smaller" = "Küçült";
+"Actual Size" = "Gerçek Boyut";
+"Appearance" = "Görünüm";
+"Light" = "Açık";
+"Dark" = "Koyu";
+"System" = "Sistem";
+"Word Count" = "Kelime Sayısı";
+"Show Tab Bar" = "Sekme Çubuğunu Göster";
+"Enter Full Screen" = "Tam Ekrana Geç";
+
+/* Window, Help */
+"Window" = "Pencere";
+"Minimize" = "Simge Durumuna Küçült";
+"Zoom" = "Yakınlaştır";
+"Bring All to Front" = "Tümünü Öne Getir";
+"Help" = "Yardım";
+"QuickMD Help" = "QuickMD Yardım";
+
+/* Templates */
+"Blank" = "Boş";
+"Meeting Notes" = "Toplantı Notları";
+"To-Do List" = "Yapılacaklar Listesi";
+"Daily Journal" = "Günlük";
+"Weekly Review" = "Haftalık Değerlendirme";
+"Project Plan" = "Proje Planı";
+"README" = "README";
+"Blog Post" = "Blog Yazısı";
+"Decision Record" = "Karar Kaydı";
+
+/* Settings */
+"Settings" = "Ayarlar";
+"Text size" = "Metin boyutu";
+"Windows" = "Pencereler";
+"New document" = "Yeni belge";
+"Agents" = "Ajanlar";
+"Default app" = "Varsayılan uygulama";
+"Open documents in tabs" = "Belgeleri sekmelerde aç";
+"Watch agents write live" = "Ajanların yazışını canlı izle";
+"Make Default for .md" = ".md için Varsayılan Yap";
+"%d pt" = "%d pt";
+
+/* Alerts and panels */
+"OK" = "Tamam";
+"Open" = "Aç";
+"Cancel" = "Vazgeç";
+"Open this link in another app?" = "Bu bağlantı başka bir uygulamada açılsın mı?";
+"Couldn’t make QuickMD the default" = "QuickMD varsayılan yapılamadı";
+"QuickMD now opens Markdown files" = "Markdown dosyaları artık QuickMD ile açılıyor";
+"Finder and Quick Look will offer “Open with QuickMD” for .md files." = "Finder ve Quick Look, .md dosyaları için “QuickMD ile Aç” seçeneğini sunacak.";
+"Allow Access" = "İzin Ver";
+"Allow QuickMD to show the images and open the notes this note links to in “%@”." = "QuickMD’nin “%@” klasöründeki görselleri göstermesine ve bu notun bağlandığı notları açmasına izin verin.";
+"No text was selected." = "Metin seçilmedi.";
+"%@ words" = "%@ kelime";
+"%@ characters" = "%@ karakter";
+"About %@ min to read" = "Okuma süresi yaklaşık %@ dk";
+"Selection: %@ words, %@ characters" = "Seçim: %@ kelime, %@ karakter";
+
+/* Help, accessibility */
+"Report an Issue…" = "Sorun Bildir…";
+"Task" = "Görev";
+"Image" = "Görsel";
+"table" = "tablo";
+"Table, %d rows, %d columns" = "Tablo, %d satır, %d sütun";

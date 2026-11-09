@@ -11,7 +11,7 @@ final class SettingsWindowController: NSWindowController {
     private init() {
         let window = NSWindow(contentViewController: SettingsViewController())
         window.styleMask = [.titled, .closable]
-        window.title = "Settings"
+        window.title = L("Settings")
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.center()
@@ -32,11 +32,11 @@ private final class SettingsViewController: NSViewController {
         labels: ThemePreference.allCases.map(\.displayName), trackingMode: .selectOne,
         target: self, action: #selector(chooseTheme(_:))
     )
-    private lazy var tabs = NSButton(checkboxWithTitle: "Open documents in tabs", target: self, action: #selector(toggleTabs(_:)))
-    private lazy var live = NSButton(checkboxWithTitle: "Watch agents write live", target: self, action: #selector(toggleLive(_:)))
+    private lazy var tabs = NSButton(checkboxWithTitle: L("Open documents in tabs"), target: self, action: #selector(toggleTabs(_:)))
+    private lazy var live = NSButton(checkboxWithTitle: L("Watch agents write live"), target: self, action: #selector(toggleLive(_:)))
     private lazy var starter = NSPopUpButton(frame: .zero, pullsDown: false)
     private lazy var defaultApp = NSButton(
-        title: "Make Default for .md", target: NSApp.delegate, action: #selector(AppDelegate.makeDefault(_:))
+        title: L("Make Default for .md"), target: NSApp.delegate, action: #selector(AppDelegate.makeDefault(_:))
     )
 
     override func loadView() {
@@ -89,13 +89,13 @@ private final class SettingsViewController: NSViewController {
     }
 
     private func row(_ title: String, _ content: NSView) {
-        let label = NSTextField(labelWithString: title + ":")
+        let label = NSTextField(labelWithString: L(title) + ":")
         grid.addRow(with: [label, content]).yPlacement = .center
     }
 
     private func refresh() {
         size.doubleValue = Double(Settings.fontSize)
-        sizeLabel.stringValue = "\(Int(Settings.fontSize)) pt"
+        sizeLabel.stringValue = String(format: L("%d pt"), Int(Settings.fontSize))
         theme.selectedSegment = ThemePreference.allCases.firstIndex(of: Settings.themePreference) ?? 0
         tabs.state = Settings.opensInTabs ? .on : .off
         live.state = Settings.liveWriting ? .on : .off

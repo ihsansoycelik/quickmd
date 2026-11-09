@@ -66,6 +66,8 @@ cp "$ROOT/scripts/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 # KaTeX and Mermaid, each with
 # its license; the app's own license and credits for the About panel.
 cp -R "$ROOT/Resources/katex" "$ROOT/Resources/mermaid" "$APP_DIR/Contents/Resources/"
+# The app's words in each language (en is the key, tr the translation).
+cp -R "$ROOT/Resources/Localization/"*.lproj "$APP_DIR/Contents/Resources/"
 cp "$ROOT/LICENSE" "$APP_DIR/Contents/Resources/LICENSE.txt"
 cp "$ROOT/Packaging/Credits.rtf" "$ROOT/Packaging/PrivacyInfo.xcprivacy" "$APP_DIR/Contents/Resources/"
 find "$APP_DIR" -name .DS_Store -delete

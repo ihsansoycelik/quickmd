@@ -10,7 +10,8 @@
     <key>com.apple.security.files.bookmarks.app-scope</key><true/>
     <!-- File › Print. -->
     <key>com.apple.security.print</key><true/>
-    <!-- Remote images in the preview (the app itself makes no requests). -->
+    <!-- WebKit, which renders Print and Export as PDF, does not load at all in the
+         sandbox without it (tested). The app itself makes no requests. -->
     <key>com.apple.security.network.client</key><true/>
 </dict>
 </plist>

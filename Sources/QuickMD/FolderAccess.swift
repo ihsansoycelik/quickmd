@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// Under the App Sandbox a note's own file is readable but its folder
 /// isn't, so images beside it and the notes it links to need the
@@ -39,8 +40,8 @@ enum FolderAccess {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = folder
-        panel.prompt = "Allow Access"
-        panel.message = "Allow QuickMD to show the images and open the notes this note links to in “\(folder.lastPathComponent)”."
+        panel.prompt = L("Allow Access")
+        panel.message = String(format: L("Allow QuickMD to show the images and open the notes this note links to in “%@”."), folder.lastPathComponent)
         let finish: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK, let url = panel.url,
                   let data = try? url.bookmarkData(options: .withSecurityScope) else { return done(false) }
@@ -72,8 +73,50 @@ enum NoteLinks {
             NSDocumentController.shared.openDocument(withContentsOf: file, display: true) { _, _, error in
                 if let error { NSApp.presentError(error) }
             }
+        } else if canRun(file) {
+            // A note must never start a program: apps and scripts are shown in Finder instead.
+            NSWorkspace.shared.activateFileViewerSelecting([file])
         } else {
             NSWorkspace.shared.open(file)
         }
+    }
+
+    /// A ⌘-clicked link. Web and mail links open; a file link opens like
+    /// a relative one; any other scheme (which may launch an app) asks first.
+    static func open(link url: URL, from window: NSWindow?) {
+        let scheme = url.scheme?.lowercased() ?? ""
+        if scheme == "http" || scheme == "https" || scheme == "mailto" {
+            NSWorkspace.shared.open(url)
+        } else if url.isFileURL {
+            open(url.standardizedFileURL, from: window)
+        } else {
+            let alert = NSAlert()
+            alert.messageText = L("Open this link in another app?")
+            alert.informativeText = url.absoluteString.count > 200 ? String(url.absoluteString.prefix(200)) + "…" : url.absoluteString
+            alert.addButton(withTitle: L("Open"))
+            alert.addButton(withTitle: L("Cancel"))
+            let run: (NSApplication.ModalResponse) -> Void = { if $0 == .alertFirstButtonReturn { NSWorkspace.shared.open(url) } }
+            if let window { alert.beginSheetModal(for: window, completionHandler: run) } else { run(alert.runModal()) }
+        }
+    }
+
+    private static let runnableExtensions: Set<String> = [
+        "app", "command", "tool", "sh", "bash", "zsh", "csh", "ksh", "fish", "terminal", "pkg", "mpkg",
+        "scpt", "scptd", "applescript", "workflow", "action", "prefpane", "jar", "osax", "kext", "plugin",
+        "webloc", "inetloc", "fileloc", "py", "rb", "pl", "php", "js", "exe", "bat", "dylib", "dmg", "iso",
+    ]
+
+    /// Would opening `file` run something?
+    static func canRun(_ file: URL) -> Bool {
+        let ext = file.pathExtension.lowercased()
+        if runnableExtensions.contains(ext) { return true }
+        if let type = UTType(filenameExtension: ext),
+           [UTType.application, .executable, .script, .bundle, .package].contains(where: type.conforms(to:)) { return true }
+        var isFolder: ObjCBool = false
+        if FileManager.default.fileExists(atPath: file.path, isDirectory: &isFolder) {
+            if isFolder.boolValue { return NSWorkspace.shared.isFilePackage(atPath: file.path) }
+            return FileManager.default.isExecutableFile(atPath: file.path)
+        }
+        return false
     }
 }

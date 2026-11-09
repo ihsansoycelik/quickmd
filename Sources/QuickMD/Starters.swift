@@ -7,16 +7,16 @@ enum Starter: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .blank: return "Blank"
-        case .note: return "Note"
-        case .meeting: return "Meeting Notes"
-        case .todo: return "To-Do List"
-        case .journal: return "Daily Journal"
-        case .weekly: return "Weekly Review"
-        case .project: return "Project Plan"
-        case .readme: return "README"
-        case .blog: return "Blog Post"
-        case .decision: return "Decision Record"
+        case .blank: return L("Blank")
+        case .note: return L("Note")
+        case .meeting: return L("Meeting Notes")
+        case .todo: return L("To-Do List")
+        case .journal: return L("Daily Journal")
+        case .weekly: return L("Weekly Review")
+        case .project: return L("Project Plan")
+        case .readme: return L("README")
+        case .blog: return L("Blog Post")
+        case .decision: return L("Decision Record")
         }
     }
 
@@ -302,6 +302,12 @@ final class QuickMDDocumentController: NSDocumentController {
             document.updateChangeCount(.changeDone)
             document.editor?.placeCaretAtFirstBlank()
         }
+    }
+
+    /// A new note holding `text` (Services › New QuickMD Note With Selection).
+    func newDocument(text: String) {
+        guard let document = openUntitled(text: text), !text.isEmpty else { return }
+        document.updateChangeCount(.changeDone)
     }
 
     private func openUntitled(text: String) -> MarkdownDocument? {

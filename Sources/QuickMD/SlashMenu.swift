@@ -14,25 +14,25 @@ struct SlashCommand {
 
     static let all: [SlashCommand] = {
         var commands = [
-            SlashCommand(title: "Text", symbol: "text.alignleft", keywords: ["body", "paragraph", "plain"],
+            SlashCommand(title: L("Text"), symbol: "text.alignleft", keywords: ["text", "body", "paragraph", "plain"],
                          action: #selector(MarkdownTextView.setHeading(_:)), tag: 0),
-            SlashCommand(title: "Heading 1", symbol: "textformat.size.larger", keywords: ["h1", "title"],
+            SlashCommand(title: L("Heading 1"), symbol: "textformat.size.larger", keywords: ["heading 1", "h1", "title"],
                          action: #selector(MarkdownTextView.setHeading(_:)), tag: 1),
-            SlashCommand(title: "Heading 2", symbol: "textformat.size", keywords: ["h2", "subtitle"],
+            SlashCommand(title: L("Heading 2"), symbol: "textformat.size", keywords: ["heading 2", "h2", "subtitle"],
                          action: #selector(MarkdownTextView.setHeading(_:)), tag: 2),
-            SlashCommand(title: "Heading 3", symbol: "textformat.size.smaller", keywords: ["h3"],
+            SlashCommand(title: L("Heading 3"), symbol: "textformat.size.smaller", keywords: ["heading 3", "h3"],
                          action: #selector(MarkdownTextView.setHeading(_:)), tag: 3),
-            SlashCommand(title: "Bulleted List", symbol: "list.bullet", keywords: ["ul", "unordered", "bullet"],
+            SlashCommand(title: L("Bulleted List"), symbol: "list.bullet", keywords: ["bulleted list", "ul", "unordered", "bullet"],
                          action: #selector(MarkdownTextView.toggleBulletList(_:))),
-            SlashCommand(title: "Numbered List", symbol: "list.number", keywords: ["ol", "ordered"],
+            SlashCommand(title: L("Numbered List"), symbol: "list.number", keywords: ["numbered list", "ol", "ordered"],
                          action: #selector(MarkdownTextView.toggleNumberedList(_:))),
-            SlashCommand(title: "Task List", symbol: "checklist", keywords: ["todo", "checkbox", "task"],
+            SlashCommand(title: L("Task List"), symbol: "checklist", keywords: ["task list", "todo", "checkbox", "task"],
                          action: #selector(MarkdownTextView.toggleTaskList(_:))),
-            SlashCommand(title: "Quote", symbol: "text.quote", keywords: ["blockquote"],
+            SlashCommand(title: L("Quote"), symbol: "text.quote", keywords: ["quote", "blockquote"],
                          action: #selector(MarkdownTextView.toggleQuote(_:))),
-            SlashCommand(title: "Code Block", symbol: "curlybraces", keywords: ["code", "fence", "snippet"],
+            SlashCommand(title: L("Code Block"), symbol: "curlybraces", keywords: ["code block", "code", "fence", "snippet"],
                          action: #selector(MarkdownTextView.insertCodeBlock(_:))),
-            SlashCommand(title: "Table", symbol: "tablecells", keywords: ["grid"],
+            SlashCommand(title: L("Table"), symbol: "tablecells", keywords: ["table", "grid"],
                          action: #selector(MarkdownTextView.insertTable(_:))),
         ]
         let calloutSymbols: [CalloutKind: String] = [
@@ -40,17 +40,17 @@ struct SlashCommand {
             .warning: "exclamationmark.triangle", .caution: "exclamationmark.octagon",
         ]
         for kind in CalloutKind.allCases {
-            commands.append(SlashCommand(title: "Callout: \(kind.title)", symbol: calloutSymbols[kind] ?? "info.circle",
-                                         keywords: ["callout", "admonition", "alert"],
+            commands.append(SlashCommand(title: L("Callout") + ": " + kind.title, symbol: calloutSymbols[kind] ?? "info.circle",
+                                         keywords: ["callout", "admonition", "alert", kind.rawValue],
                                          action: #selector(MarkdownTextView.insertCallout(_:)), represented: kind.rawValue))
         }
         commands += [
-            SlashCommand(title: "Math Block", symbol: "function", keywords: ["latex", "katex", "equation", "formula"],
+            SlashCommand(title: L("Math Block"), symbol: "function", keywords: ["math block", "latex", "katex", "equation", "formula"],
                          action: #selector(MarkdownTextView.insertMathBlock(_:))),
-            SlashCommand(title: "Mermaid Diagram", symbol: "point.3.connected.trianglepath.dotted",
-                         keywords: ["diagram", "chart", "flow", "graph"],
+            SlashCommand(title: L("Mermaid Diagram"), symbol: "point.3.connected.trianglepath.dotted",
+                         keywords: ["mermaid", "diagram", "chart", "flow", "graph"],
                          action: #selector(MarkdownTextView.insertDiagram(_:))),
-            SlashCommand(title: "Horizontal Rule", symbol: "minus", keywords: ["divider", "hr", "line", "separator"],
+            SlashCommand(title: L("Horizontal Rule"), symbol: "minus", keywords: ["horizontal rule", "divider", "hr", "line", "separator"],
                          action: #selector(MarkdownTextView.insertHorizontalRule(_:))),
         ]
         return commands
@@ -209,7 +209,7 @@ final class SlashMenu: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         table.delegate = self
         table.target = self
         table.action = #selector(clicked(_:))
-        table.setAccessibilityLabel("Insert block")
+        table.setAccessibilityLabel(L("Insert block"))
 
         let scroll = NSScrollView()
         scroll.documentView = table

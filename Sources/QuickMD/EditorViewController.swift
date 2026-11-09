@@ -53,6 +53,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
         scrollView.contentView.drawsBackground = false
+        scrollView.contentView.postsBoundsChangedNotifications = true  // remembered per note
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.documentView = textView
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -103,6 +104,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
 
     func load(_ text: String) {
         finishPlayback()
+        imageCache.removeAll()  // a reload may come with new pictures
         guard text != textView.string else { return }
         let selection = textView.selectedRange()
         textView.string = text
@@ -111,6 +113,30 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let length = (text as NSString).length
         textView.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
         textView.undoManager?.removeAllActions()
+    }
+
+    /// Caret and first visible character, for reopening the note there.
+    var position: Positions.Position {
+        let caret = textView.selectedRange().location
+        guard let layout = textView.layoutManager, let container = textView.textContainer else {
+            return .init(caret: caret, top: 0)
+        }
+        var point = scrollView.contentView.bounds.origin
+        point.y -= textView.textContainerOrigin.y
+        let glyph = layout.glyphIndex(for: point, in: container)
+        return .init(caret: caret, top: layout.characterIndexForGlyph(at: glyph))
+    }
+
+    func restore(_ position: Positions.Position) {
+        let length = (textView.string as NSString).length
+        guard length > 0 else { return }
+        textView.setSelectedRange(NSRange(location: min(position.caret, length), length: 0))
+        guard let layout = textView.layoutManager else { return }
+        let top = min(position.top, length - 1)
+        layout.ensureLayout(forCharacterRange: NSRange(location: 0, length: top + 1))
+        let glyph = layout.glyphIndexForCharacter(at: top)
+        let y = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minY + textView.textContainerOrigin.y
+        textView.scroll(NSPoint(x: 0, y: y))
     }
 
     // MARK: Live writing
@@ -293,9 +319,22 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         }
         let key = url.standardizedFileURL.path
         if let cached = imageCache[key] { return cached }
-        let image = NSImage(contentsOf: url)
+        // Drawn on the main thread while scrolling: a huge file would stall typing.
+        let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        let image = bytes > 0 && bytes <= Self.imageByteLimit ? NSImage(contentsOf: url) : nil
         imageCache[key] = image
         return image
+    }
+
+    private static let imageByteLimit = 25_000_000
+
+    /// Pictures that didn't load get another try (a folder was just
+    /// granted, a file was added); a window coming forward calls this.
+    func retryMissingImages() {
+        let missing = imageCache.filter { $0.value == nil }
+        guard !missing.isEmpty else { return }
+        missing.keys.forEach { imageCache.removeValue(forKey: $0) }
+        applyMode()
     }
 
     /// The table the caret is in: shown as source, not as a grid.

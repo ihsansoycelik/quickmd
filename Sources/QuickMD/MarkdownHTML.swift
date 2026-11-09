@@ -932,7 +932,7 @@ enum MarkdownHTML {
     private static let droppedPattern = regex("(?i)^(?:\(dropped))$")
     // HTML separates attributes with a slash or a closing quote too: `<img/onerror=…>`.
     private static let handlerPattern = regex(#"(?i)(?<=[\s/"'])(?:on[a-z]+|srcdoc|formaction|data-task|data-line|data-key)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?"#)
-    private static let urlAttributePattern = regex(#"(?i)(?<=[\s/"'])((?:href|src|xlink:href|action|poster|background|lowsrc|dynsrc|cite|data|ping)\s*=\s*)("[^"]*"|'[^']*'|[^\s>"']+)"#)
+    private static let urlAttributePattern = regex(#"(?i)(?<=[\s/"'])((?:href|srcset|imagesrcset|src|xlink:href|action|poster|background|lowsrc|dynsrc|cite|data|ping)\s*=\s*)("[^"]*"|'[^']*'|[^\s>"']+)"#)
 
     /// Raw HTML from a note, minus anything that could run code or
     /// leave the page: scripts and other embedders, event handlers,
@@ -948,7 +948,12 @@ enum MarkdownHTML {
             var attributes = replace(m[4], handlerPattern) { _ in "" }
             attributes = replace(attributes, urlAttributePattern) { a in
                 let raw = a[2].trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-                return isDangerousURL(raw) ? a[1] + "\"#\"" : a[0]
+                // srcset is a list: `a.png 1x, b.png 2x`. Every candidate must be safe.
+                // Entities are decoded first so `&#44;` can't hide a second candidate.
+                let urls = a[1].lowercased().contains("srcset")
+                    ? decodeEntities(raw).split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces).split(separator: " ").first ?? "") }
+                    : [raw]
+                return urls.contains(where: isDangerousURL) ? a[1] + "\"#\"" : a[0]
             }
             return "<\(name)\(attributes)>"
         }
@@ -960,6 +965,16 @@ enum MarkdownHTML {
     static func safeURL(_ url: String) -> String { isDangerousURL(url) ? "#" : url }
 
     private static func isDangerousURL(_ value: String) -> Bool {
+        let v = decodeEntities(value)
+        let compact = String(v.unicodeScalars.filter { $0.value > 0x20 && $0.value != 0x7F }).lowercased()
+        if compact.hasPrefix("javascript:") || compact.hasPrefix("vbscript:") || compact.hasPrefix("file:") { return true }
+        if compact.hasPrefix("data:") {
+            return !(compact.hasPrefix("data:image/") && !compact.hasPrefix("data:image/svg"))
+        }
+        return false
+    }
+
+    private static func decodeEntities(_ value: String) -> String {
         var v = value.replacingOccurrences(of: "&amp;", with: "&")
         // Entities a scheme could hide behind: `jav&#x61;script:`.
         v = replace(v, #"&#([xX])?([0-9A-Fa-f]{1,7});?"#) { m in
@@ -969,12 +984,8 @@ enum MarkdownHTML {
         v = v.replacingOccurrences(of: "&colon;", with: ":", options: .caseInsensitive)
             .replacingOccurrences(of: "&tab;", with: "", options: .caseInsensitive)
             .replacingOccurrences(of: "&newline;", with: "", options: .caseInsensitive)
-        let compact = String(v.unicodeScalars.filter { $0.value > 0x20 && $0.value != 0x7F }).lowercased()
-        if compact.hasPrefix("javascript:") || compact.hasPrefix("vbscript:") || compact.hasPrefix("file:") { return true }
-        if compact.hasPrefix("data:") {
-            return !(compact.hasPrefix("data:image/") && !compact.hasPrefix("data:image/svg"))
-        }
-        return false
+            .replacingOccurrences(of: "&comma;", with: ",", options: .caseInsensitive)
+        return v
     }
 
     // MARK: Regex

@@ -169,8 +169,54 @@ final class MarkdownTextView: NSTextView {
                 return
             }
         }
+        let board = NSPasteboard.general
+        // Files copied in Finder paste as links, the way dropping them does.
+        if let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+           !urls.isEmpty {
+            replace(selection, with: markdownLinks(for: urls))
+            return
+        }
+        // A screenshot or a copied image: saved beside the note, linked in.
+        if board.string(forType: .string) == nil,
+           let image = NSImage(pasteboard: board) {
+            pasteImage(image, over: selection)
+            return
+        }
         super.paste(sender)
     }
+
+    private func pasteImage(_ image: NSImage, over selection: NSRange) {
+        guard let folder = baseURL,
+              let tiff = image.tiffRepresentation,
+              let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else {
+            return NSSound.beep()  // an untitled note has no folder to keep the image in
+        }
+        let write = { [weak self] in
+            guard let self else { return }
+            let stamp = Self.stampFormatter.string(from: Date())
+            var file = folder.appendingPathComponent("Pasted image \(stamp).png")
+            var n = 2
+            while FileManager.default.fileExists(atPath: file.path) {
+                file = folder.appendingPathComponent("Pasted image \(stamp) \(n).png"); n += 1
+            }
+            do {
+                try png.write(to: file, options: .withoutOverwriting)
+                self.replace(selection, with: self.markdownLinks(for: [file]))
+            } catch {
+                NSSound.beep()
+            }
+        }
+        if FolderAccess.canRead(folder) { write() } else {
+            FolderAccess.request(folder, for: window) { granted in if granted { write() } }
+        }
+    }
+
+    private static let stampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return f
+    }()
 
     // MARK: Dropping files
 
@@ -179,18 +225,22 @@ final class MarkdownTextView: NSTextView {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
               !urls.isEmpty else { return super.performDragOperation(sender) }
-        let images: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "heic", "tif", "tiff", "bmp"]
-        let links = urls.map { url -> String in
-            let name = url.deletingPathExtension().lastPathComponent
-            let target = relativePath(to: url)
-            return images.contains(url.pathExtension.lowercased()) ? "![\(name)](\(target))" : "[\(name)](\(target))"
-        }
         let point = convert(sender.draggingLocation, from: nil)
         let index = characterIndexForInsertion(at: point)
         setSelectedRange(NSRange(location: index, length: 0))
-        replace(NSRange(location: index, length: 0), with: links.joined(separator: "\n"))
+        replace(NSRange(location: index, length: 0), with: markdownLinks(for: urls))
         window?.makeFirstResponder(self)
         return true
+    }
+
+    /// Image files as images, other files as links, one per line.
+    private func markdownLinks(for urls: [URL]) -> String {
+        let images: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "heic", "tif", "tiff", "bmp"]
+        return urls.map { url -> String in
+            let name = url.deletingPathExtension().lastPathComponent
+            let target = relativePath(to: url)
+            return images.contains(url.pathExtension.lowercased()) ? "![\(name)](\(target))" : "[\(name)](\(target))"
+        }.joined(separator: "\n")
     }
 
     /// `url` as a markdown link target: relative to the note's folder
@@ -387,7 +437,8 @@ final class MarkdownTextView: NSTextView {
         return layoutManager.characterIndexForGlyph(at: glyph)
     }
 
-    private func toggleCheckbox(at index: Int) -> Bool {
+    @discardableResult
+    func toggleCheckbox(at index: Int) -> Bool {
         let ns = string as NSString
         let lineRange = ns.lineRange(for: NSRange(location: index, length: 0))
         let line = ns.substring(with: lineRange)
@@ -411,7 +462,7 @@ final class MarkdownTextView: NSTextView {
             NoteLinks.open(URL(fileURLWithPath: path, relativeTo: baseURL).standardizedFileURL, from: window)
             return
         }
-        NSWorkspace.shared.open(url)
+        NoteLinks.open(link: url, from: window)
     }
 
     /// Puts the caret on the heading whose anchor (as the preview makes them) is `id`.

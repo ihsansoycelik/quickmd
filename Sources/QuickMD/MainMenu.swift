@@ -16,12 +16,14 @@ enum MainMenu {
         let help = NSMenu(title: "Help")
         help.addItem(item("QuickMD Help", #selector(QuickMDDocumentController.showHelp(_:)), "?",
                           target: NSDocumentController.shared))
+        help.addItem(item("Report an Issue…", #selector(AppDelegate.reportIssue(_:)), target: app))
         main.addItem(submenu(help))
         NSApp.helpMenu = help
         return main
     }
 
     private static func submenu(_ menu: NSMenu) -> NSMenuItem {
+        menu.title = L(menu.title)
         let item = NSMenuItem(title: menu.title, action: nil, keyEquivalent: "")
         item.submenu = menu
         return item
@@ -31,7 +33,7 @@ enum MainMenu {
         _ title: String, _ action: Selector?, _ key: String = "",
         _ modifiers: NSEvent.ModifierFlags = .command, target: AnyObject? = nil, tag: Int = 0
     ) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        let item = NSMenuItem(title: L(title), action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
         item.target = target
         item.tag = tag
@@ -76,6 +78,8 @@ enum MainMenu {
         menu.addItem(item("Close", #selector(NSWindow.performClose(_:)), "w"))
         menu.addItem(item("Save", #selector(NSDocument.save(_:)), "s"))
         menu.addItem(item("Duplicate", #selector(NSDocument.duplicate(_:)), "s", [.command, .shift]))
+        // Classic Save As: writes the note to a new place and keeps editing it there.
+        menu.addItem(item("Save As…", #selector(NSDocument.saveAs(_:)), "s", [.command, .option]))
         menu.addItem(item("Rename…", #selector(NSDocument.rename(_:))))
         menu.addItem(item("Move To…", #selector(NSDocument.move(_:))))
         menu.addItem(item("Revert To Saved", #selector(NSDocument.revertToSaved(_:))))
@@ -123,6 +127,23 @@ enum MainMenu {
         substitutions.addItem(item("Smart Dashes", #selector(NSTextView.toggleAutomaticDashSubstitution(_:))))
         substitutions.addItem(item("Text Replacement", #selector(NSTextView.toggleAutomaticTextReplacement(_:))))
         menu.addItem(submenu(substitutions))
+
+        let transformations = NSMenu(title: "Transformations")
+        transformations.addItem(item("Make Upper Case", #selector(NSResponder.uppercaseWord(_:))))
+        transformations.addItem(item("Make Lower Case", #selector(NSResponder.lowercaseWord(_:))))
+        transformations.addItem(item("Capitalize", #selector(NSResponder.capitalizeWord(_:))))
+        menu.addItem(submenu(transformations))
+
+        let speech = NSMenu(title: "Speech")
+        speech.addItem(item("Start Speaking", #selector(NSTextView.startSpeaking(_:))))
+        speech.addItem(item("Stop Speaking", #selector(NSTextView.stopSpeaking(_:))))
+        menu.addItem(submenu(speech))
+
+        // Apple Intelligence: proofread, rewrite, summarize the selection.
+        if #available(macOS 15.2, *) {
+            menu.addItem(.separator())
+            NSMenuItem.writingToolsItems.forEach(menu.addItem)
+        }
         return menu
     }
 
@@ -135,7 +156,7 @@ enum MainMenu {
         menu.addItem(item("Link", #selector(MarkdownTextView.insertLink(_:)), "k"))
         menu.addItem(.separator())
         for level in 1...4 {
-            menu.addItem(item("Heading \(level)", #selector(MarkdownTextView.setHeading(_:)), "\(level)", [.command, .option], tag: level))
+            menu.addItem(item(String(format: L("Heading %d"), level), #selector(MarkdownTextView.setHeading(_:)), "\(level)", [.command, .option], tag: level))
         }
         menu.addItem(item("Body Text", #selector(MarkdownTextView.setHeading(_:)), "0", [.command, .option], tag: 0))
         menu.addItem(.separator())
@@ -182,6 +203,8 @@ enum MainMenu {
             themes.addItem(entry)
         }
         menu.addItem(submenu(themes))
+        menu.addItem(.separator())
+        menu.addItem(item("Word Count", #selector(DocumentWindowController.showWordCount(_:)), "i", [.command, .option]))
         menu.addItem(.separator())
         menu.addItem(item("Show Tab Bar", #selector(NSWindow.toggleTabBar(_:))))
         menu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))

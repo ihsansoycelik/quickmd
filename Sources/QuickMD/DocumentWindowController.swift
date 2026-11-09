@@ -7,7 +7,10 @@ import WebKit
 /// showing only on the caret's line. No sidebar, no toolbar.
 final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
     private let editor = EditorViewController()
+    var editorForTests: EditorViewController { editor }
     private var settingsObserver: Any?
+    private var positionObservers: [Any] = []
+    private var positionSave: Timer?
 
     private var markdownDocument: MarkdownDocument? { document as? MarkdownDocument }
 
@@ -35,6 +38,17 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         settingsObserver = NotificationCenter.default.addObserver(
             forName: .editorSettingsChanged, object: nil, queue: .main
         ) { [weak self] _ in self?.applyTheme() }
+        // Quitting skips windowWillClose (sudden termination), so the
+        // place is saved a moment after the caret or the view moves.
+        let center = NotificationCenter.default
+        positionObservers = [
+            center.addObserver(forName: NSTextView.didChangeSelectionNotification, object: editor.textView, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.schedulePositionSave() }
+            },
+            center.addObserver(forName: NSView.boundsDidChangeNotification, object: editor.textView.enclosingScrollView?.contentView, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.schedulePositionSave() }
+            },
+        ]
 
         document.editor = editor
         editor.textView.baseURL = document.fileURL?.deletingLastPathComponent()
@@ -44,14 +58,34 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             editor.play(document.text)
         } else {
             editor.load(document.text)
+            // Back where you left it, once the window has its size.
+            if let url = document.fileURL, let position = Positions.position(for: url) {
+                RunLoop.main.perform(inModes: [.common]) { [weak self] in MainActor.assumeIsolated { self?.editor.restore(position) } }
+            }
         }
         applyTheme()
+    }
+
+    func windowWillClose(_ notification: Notification) { savePosition() }
+
+    private func schedulePositionSave() {
+        positionSave?.invalidate()
+        positionSave = Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.savePosition() }
+        }
+    }
+
+    private func savePosition() {
+        positionSave?.invalidate()
+        guard let url = markdownDocument?.fileURL else { return }
+        Positions.save(editor.position, for: url)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     deinit {
         if let settingsObserver { NotificationCenter.default.removeObserver(settingsObserver) }
+        positionObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
     override var document: AnyObject? {
@@ -61,6 +95,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
+        editor.retryMissingImages()
         guard let window, window.firstResponder === window || window.firstResponder == nil else { return }
         window.makeFirstResponder(editor.textView)
     }
@@ -143,6 +178,35 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         pasteboard.setString(html, forType: .string)
     }
 
+    /// View › Word Count: counts on request, in a sheet, never a bar.
+    @objc func showWordCount(_ sender: Any?) {
+        guard let window else { return }
+        let text = editor.currentText
+        let selection = editor.textView.selectedRange()
+        let all = Self.counts(text)
+        let alert = NSAlert()
+        alert.messageText = String(format: L("%@ words"), Self.number(all.words))
+        var lines = [
+            String(format: L("%@ characters"), Self.number(all.characters)),
+            String(format: L("About %@ min to read"), Self.number(max(1, Int((Double(all.words) / 230).rounded(.up))))),
+        ]
+        if selection.length > 0 {
+            let part = Self.counts((text as NSString).substring(with: selection))
+            lines.append(String(format: L("Selection: %@ words, %@ characters"), Self.number(part.words), Self.number(part.characters)))
+        }
+        alert.informativeText = lines.joined(separator: "\n")
+        alert.addButton(withTitle: L("OK"))
+        alert.beginSheetModal(for: window)
+    }
+
+    static func counts(_ text: String) -> (words: Int, characters: Int) {
+        var words = 0
+        text.enumerateSubstrings(in: text.startIndex..., options: [.byWords, .substringNotRequired]) { _, _, _, _ in words += 1 }
+        return (words, text.filter { !$0.isNewline }.count)
+    }
+
+    private static func number(_ n: Int) -> String { NumberFormatter.localizedString(from: n as NSNumber, number: .decimal) }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(printRenderedDocument(_:)), #selector(exportPDF(_:)):
@@ -176,7 +240,14 @@ final class RenderedPrinter: NSObject, WKNavigationDelegate {
         super.init()
         webView.navigationDelegate = self
         webView.loadHTMLString(html, baseURL: PreviewScheme.baseURL(for: baseURL))
+        // If WebKit never answers, give up so Print and Export stay usable.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self, !self.started else { return }
+            self.finish()
+        }
     }
+
+    private var started = false
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -190,7 +261,13 @@ final class RenderedPrinter: NSObject, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { finish() }
 
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { finish() }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { finish() }
+
     private func run() {
+        guard !started else { return }
+        started = true
         guard let window else { return finish() }
         printInfo.topMargin = 54
         printInfo.bottomMargin = 54
@@ -215,5 +292,11 @@ final class RenderedPrinter: NSObject, WKNavigationDelegate {
         finish()
     }
 
-    private func finish() { done() }
+    private var finished = false
+
+    private func finish() {
+        guard !finished else { return }
+        finished = true
+        done()
+    }
 }

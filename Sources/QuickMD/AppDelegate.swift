@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         _ = QuickMDDocumentController()
         FolderAccess.restore()
         NSApp.mainMenu = MainMenu.build(target: self)
+        NSApp.servicesProvider = self
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -30,6 +31,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             makeDefault(nil)
         }
         #endif
+    }
+
+    // MARK: Services
+
+    /// Services › New QuickMD Note With Selection, from any app.
+    @objc func newNoteWithSelection(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        guard let text = pasteboard.string(forType: .string), !text.isEmpty else {
+            error.pointee = L("No text was selected.") as NSString
+            return
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        (NSDocumentController.shared as? QuickMDDocumentController)?.newDocument(text: normalized)
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
@@ -67,17 +81,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             guard sender != nil else { return }
             let alert = NSAlert()
             if let failure {
-                alert.messageText = "Couldn't make QuickMD the default"
+                alert.messageText = L("Couldn’t make QuickMD the default")
                 alert.informativeText = failure.localizedDescription
             } else {
-                alert.messageText = "QuickMD now opens Markdown files"
-                alert.informativeText = "Finder and Quick Look will offer “Open with QuickMD” for .md files."
+                alert.messageText = L("QuickMD now opens Markdown files")
+                alert.informativeText = L("Finder and Quick Look will offer “Open with QuickMD” for .md files.")
             }
             alert.runModal()
         }
     }
 
     // MARK: Preferences
+
+    @objc func reportIssue(_ sender: Any?) {
+        NSWorkspace.shared.open(Help.supportURL)
+    }
 
     @objc func showSettings(_ sender: Any?) {
         SettingsWindowController.shared.showWindow(nil)
