@@ -13,7 +13,7 @@ Bugün tamam olanlar (dokunma): NSDocument + otomatik kayıt, Kaydet / Çoğalt 
 3. ✅ **`network.client` kalıyor.** Test edildi: sandbox'ta WebKit bu izin olmadan hiç yüklenmiyor, Yazdır ve PDF kilitleniyordu. İnceleme notu: "Yalnızca WebKit (yazdırma/PDF) için; uygulama hiçbir istek yapmaz."
 4. ✅ **Önizleme güvenliği:** `srcset` adayları tek tek denetleniyor (test: srcsetCandidatesAreChecked).
 5. ⏳ **Hesap ve imza** (senin yapman gerekir, Apple hesabı): Apple Developer Program, App ID `com.ursula.quickmd`, Mac App Store provisioning profile, Distribution + Installer sertifikaları. Sonra `--appstore` → Transporter → TestFlight (Mac).
-6. ⏳ **App Store Connect metinleri** (2026-11-10: taslaklar `audit/10-app-store-metinleri.md`, destek/gizlilik sayfaları `docs/`; "QuickMD" adı mağazada ALINMIŞ, yeni ad gerek; Pages yayını ve ekran görüntüleri kaldı): gizlilik politikası URL'si ("veri toplanmaz" bile olsa zorunlu), destek URL'si, açıklama, anahtar kelimeler, yaş derecesi, 1280×800+ ekran görüntüleri (açık/koyu). İsim çakışması kontrolü: "QuickMD" mağazada alınmış olabilir, önce bak.
+6. ⏳ **App Store Connect metinleri** (2026-11-10: taslaklar `audit/10-app-store-metinleri.md`, destek/gizlilik sayfaları `docs/`; mağaza adı "QuickMD Editor" (QuickMD alınmış); Pages yayını ve ekran görüntüleri kaldı): gizlilik politikası URL'si ("veri toplanmaz" bile olsa zorunlu), destek URL'si, açıklama, anahtar kelimeler, yaş derecesi, 1280×800+ ekran görüntüleri (açık/koyu). İsim çakışması kontrolü: "QuickMD" mağazada alınmış olabilir, önce bak.
 
 ## Adım 2 — macOS standartları (görünmez ama "profesyonel" hissi bunlar verir)
 

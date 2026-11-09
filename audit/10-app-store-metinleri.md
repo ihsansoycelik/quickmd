@@ -2,9 +2,9 @@
 
 Tarih: 2026-11-10. Adım 1.6 için. Kopyala-yapıştır hazır.
 
-## İsim (dikkat)
+## İsim
 
-"QuickMD" mağazada **alınmış**: başka bir geliştiricinin ücretsiz Markdown görüntüleyicisi (apps.apple.com/app/quickmd/id6757681819). Mağaza adı benzersiz olmalı. Öneri: **"QuickMD Editor"** ya da yeni bir ad. Bundle id (`com.ursula.quickmd`) değişmez; sadece App Store Connect'teki ad ve istersen `CFBundleDisplayName`. Karar senin.
+Mağaza adı: **QuickMD Editor** (2026-11-10 seçildi; aramada bu adla bir uygulama yok, kesin kontrolü App Store Connect ad kaydederken yapar). "QuickMD" tek başına başka bir görüntüleyicide alınmış (id6757681819). Dock ve menüdeki ad QuickMD kalır; bundle id `com.ursula.quickmd` değişmez.
 
 ## URL'ler
 
