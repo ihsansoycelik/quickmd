@@ -1087,12 +1087,16 @@ enum MarkdownHTML {
 
         // Scripts run only with this page's nonce: nothing a note
         // smuggles in can execute, nor fetch, frame or submit anything.
+        // Images and media are limited to https (plus local/data/blob): a bare `*`
+        // also admitted plain http and arbitrary schemes, so a note could pull in
+        // an insecure or non-web URL. A remote https image can still act as a
+        // tracking pixel — that trade-off stays, and is why there is no `*` here.
         let nonce = UUID().uuidString.replacingOccurrences(of: "-", with: "")
         let local = "'self' quickmd: file:"
         var head = """
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-\(nonce)'; \
-        style-src 'unsafe-inline' \(local) https:; font-src \(local) data: https:; img-src * \(local) data: blob:; \
-        media-src * \(local); connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri \(local)">
+        style-src 'unsafe-inline' \(local) https:; font-src \(local) data: https:; img-src \(local) data: blob: https:; \
+        media-src \(local) https:; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri \(local)">
         """
         let hasMath = body.contains("class=\"math")
         let hasMermaid = body.contains("class=\"mermaid\"")
