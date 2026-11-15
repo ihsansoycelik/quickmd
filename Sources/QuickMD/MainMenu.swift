@@ -83,6 +83,8 @@ enum MainMenu {
         menu.addItem(item("Rename…", #selector(NSDocument.rename(_:))))
         menu.addItem(item("Move To…", #selector(NSDocument.move(_:))))
         menu.addItem(item("Revert To Saved", #selector(NSDocument.revertToSaved(_:))))
+        // autosavesInPlace is on, so the versions browser is the only way back to an older autosave.
+        menu.addItem(item("Browse All Versions…", #selector(NSDocument.browseVersions(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Export as HTML…", #selector(DocumentWindowController.exportHTML(_:)), "e", [.command, .shift]))
         menu.addItem(item("Export as PDF…", #selector(DocumentWindowController.exportPDF(_:))))
