@@ -654,10 +654,21 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             layoutManager.codeBlockColor = palette.codeBackground
             layoutManager.panelBorderColor = palette.divider
             layoutManager.panelFillColor = palette.codeBackground
-            layoutManager.checkboxColor = palette.text.withAlphaComponent(0.5)
+            layoutManager.checkboxColor = palette.text.withAlphaComponent(0.45)
+            layoutManager.checkboxAccent = palette.cursor
+            layoutManager.chipColors = [palette.codeBackground, palette.highlight]
+            layoutManager.calloutWash = theme == .dark ? 0.10 : 0.07
             layoutManager.tableBodyFont = font
         }
         textView.font = font
+        // An empty note says where to start, and that `/` opens the blocks.
+        let hint = NSAttributedString(string: L("Start writing. Type / to insert a block."), attributes: [
+            .font: font, .foregroundColor: palette.syntax,
+            .paragraphStyle: MarkdownStyler.bodyParagraph(font: font),
+        ])
+        if textView.responds(to: NSSelectorFromString("setPlaceholderAttributedString:")) {
+            textView.setValue(hint, forKey: "placeholderAttributedString")
+        }
         textView.typingAttributes = [
             .font: font,
             .foregroundColor: palette.text,

@@ -94,6 +94,11 @@ enum MarkdownStyler {
 
     static func bodyFont(size: CGFloat) -> NSFont { Design.font(size: size) }
 
+    /// Extra advance after a `-` bullet, in characters.
+    static let bulletKern: CGFloat = 0.5
+    /// Advance taken from each of a task box's three characters.
+    static let boxKern: CGFloat = -0.5
+
     static func bodyParagraph(font: NSFont) -> NSParagraphStyle {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineHeightMultiple = multiple(for: font, leading: Design.leading)
@@ -394,6 +399,10 @@ enum MarkdownStyler {
                 // A task's box stands in for its bullet: the `-` hides in reading mode.
                 let isTask = bullet.length == 1 && Checkbox.boxRange(in: line) != nil
                 storage.addAttributes([.foregroundColor: style.syntax, .qmKeepSyntax: true], range: bullet)
+                let advance = (" " as NSString).size(withAttributes: [.font: style.base]).width
+                let isBullet = bullet.length == 1 && !isTask && "-*+".utf16.contains(ns.character(at: bullet.location))
+                // Half a character more after `-`: the text starts where a task's text does.
+                if isBullet { storage.addAttribute(.kern, value: advance * MarkdownStyler.bulletKern, range: bullet) }
                 if isTask {
                     // Folded to zero width off the caret line (not hidden
                     // like a token, which would hang on the line before).
@@ -417,7 +426,10 @@ enum MarkdownStyler {
                     + ns.substring(with: NSRange(location: prefixStart, length: prefixEnd - prefixStart))
                     .replacingOccurrences(of: "\t", with: "    ")
                 let paragraph = style.body.mutableCopy() as! NSMutableParagraphStyle
-                paragraph.headIndent = (prefix as NSString).size(withAttributes: [.font: style.base]).width + CGFloat(spaces) * step
+                var indent = (prefix as NSString).size(withAttributes: [.font: style.base]).width + CGFloat(spaces) * step
+                if isBullet { indent += advance * MarkdownStyler.bulletKern }
+                if Checkbox.boxRange(in: line) != nil, mayBeTask(ns, content) { indent += 3 * advance * MarkdownStyler.boxKern }
+                paragraph.headIndent = indent
                 storage.addAttribute(.paragraphStyle, value: paragraph, range: lineRange)
             }
 
@@ -464,7 +476,11 @@ enum MarkdownStyler {
         storage: NSTextStorage, ns: NSString, text: String, style: Style
     ) {
         let color = kind.color(for: style.theme)
-        storage.addAttributes([.qmCallout: color, .paragraphStyle: style.calloutParagraph], range: lineRange)
+        // The last line carries the panel's bottom padding.
+        var next = NSMaxRange(lineRange)
+        while next < ns.length, ns.character(at: next) == 0x20 { next += 1 }
+        let isLast = next >= ns.length || ns.character(at: next) != 0x3E  // >
+        storage.addAttributes([.qmCallout: color, .paragraphStyle: isLast ? style.calloutLastParagraph : style.calloutParagraph], range: lineRange)
         storage.addAttribute(.foregroundColor, value: style.syntax, range: marker)
         if let title = calloutPattern.firstMatch(in: text, range: content) {
             let word = title.range(at: 1)
@@ -535,7 +551,9 @@ enum MarkdownStyler {
                 ], range: NSRange(location: textStart, length: textLength))
             }
         }
-        storage.addAttributes([.qmCheckbox: checked, .foregroundColor: NSColor.clear], range: boxRange)
+        // `[ ]` narrows to a character and a half, the box's own width.
+        let advance = (" " as NSString).size(withAttributes: [.font: style.base]).width
+        storage.addAttributes([.qmCheckbox: checked, .foregroundColor: NSColor.clear, .kern: advance * boxKern], range: boxRange)
     }
 
     /// Cheap pre-check so ordinary lines never allocate a substring.
@@ -840,6 +858,7 @@ enum MarkdownStyler {
         let body: NSParagraphStyle
         let quoteParagraph: NSParagraphStyle
         let calloutParagraph: NSParagraphStyle
+        let calloutLastParagraph: NSParagraphStyle
         let tableParagraph: NSParagraphStyle
         let codeParagraph: NSParagraphStyle
         let mathParagraph: NSParagraphStyle
@@ -877,6 +896,9 @@ enum MarkdownStyler {
             callout.headIndent = pad + indent
             callout.tailIndent = -pad
             calloutParagraph = callout
+            let calloutLast = callout.mutableCopy() as! NSMutableParagraphStyle
+            calloutLast.paragraphSpacing = (size * 0.7).rounded()
+            calloutLastParagraph = calloutLast
 
             let table = NSMutableParagraphStyle()
             table.lineHeightMultiple = MarkdownStyler.multiple(for: tableFont, leading: 1.9)
@@ -913,7 +935,9 @@ enum MarkdownStyler {
         func headingParagraph(level: Int, first: Bool, previousBlank: Bool, nextBlank: Bool) -> NSParagraphStyle {
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineHeightMultiple = MarkdownStyler.multiple(for: heading(level: level), leading: 1.4)
-            paragraph.paragraphSpacingBefore = first ? 0 : (base.pointSize * 0.5).rounded()
+            let space = Design.headingSpaceAbove[min(level, Design.headingSpaceAbove.count) - 1]
+            // The blank line above already gives one line of air.
+            paragraph.paragraphSpacingBefore = first ? 0 : (base.pointSize * (previousBlank ? space - 0.5 : space)).rounded()
             return paragraph
         }
 

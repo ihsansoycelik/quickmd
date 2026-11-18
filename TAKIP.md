@@ -1,5 +1,5 @@
 # TAKIP - quickmd
-> Son guncelleme: 2026-11-14 · Bu dosya projenin canli durum kaydidir. Her calisma oturumu sonunda guncellenir.
+> Son guncelleme: 2026-11-18 · Bu dosya projenin canli durum kaydidir. Her calisma oturumu sonunda guncellenir.
 
 ## Ozet tablo
 
@@ -126,6 +126,12 @@ TEAM_ID=... SIGN_IDENTITY=... INSTALLER_IDENTITY=... PROVISIONING_PROFILE=... ./
 
 ## 18. Agent gunlugu
 En yeni kayit en ustte. Her oturum sonunda bir kayit ekle: tarih, agent, ne yapildi, nerede kalindi, siradaki plan, onemli bulgular.
+
+### 2026-11-18 - Claude (UI/UX revizyonu)
+- Yapilan: ursula-estetik + universal-principles-ux ile editor incelendi; tek gorunum (iA Writer cizgisi) korunarak cilalandi. Baslik olcegi 1.5/1.25/1.08 + ustte nefes; palet hafif sicak kagit (#F8F7F4 / #1A1918, saf siyah yok); imlec 2px; gorev kutusu tek vurgu rengiyle (imlec mavisi), madde ve gorev metni ayni hizada; callout alt boslugu duzeldi (metin kenara yapisiyordu), kendi renginde hafif zemin; satir ici kod ve ==vurgu== satiri dolduran blok yerine yuvarlak cip; bos notta "Yazmaya basla. Blok eklemek icin / yaz." ipucu (EN/TR).
+- Kalinan yer: 87 test gecti, /Applications'a kuruldu. Bos not ipucu ve 2px imlec canli uygulamada gozle dogrulanmadi (snapshot'ta yok).
+- Siradaki plan: bolum 17 degismedi.
+- Onemli bulgular: callout'un son satiri panelin altina yapisiyordu (bug, duzeldi). Disa aktarma CSS'i paleti paylasiyor; renk degisikligi oraya da yansir.
 
 ### 2026-11-14 - Claude (ilk inceleme)
 - Yapilan: repo incelendi, bu dosya olusturuldu. Derleme/test calistirilmadi; README, audit/, git gecmisi, gh (PR/issue/Actions/Pages), yerel kopya durumu okundu.

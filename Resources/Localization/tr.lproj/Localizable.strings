@@ -162,3 +162,5 @@
 "Image" = "Görsel";
 "table" = "tablo";
 "Table, %d rows, %d columns" = "Tablo, %d satır, %d sütun";
+
+"Start writing. Type / to insert a block." = "Yazmaya başla. Blok eklemek için / yaz.";

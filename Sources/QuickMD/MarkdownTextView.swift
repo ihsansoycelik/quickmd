@@ -37,7 +37,17 @@ final class MarkdownTextView: NSTextView {
         guard let font else { return rect }
         let height = (font.ascender - font.descender).rounded(.up)
         guard height < rect.height else { return rect }
-        return NSRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height)
+        return NSRect(x: rect.minX, y: rect.maxY - height, width: max(rect.width, caretWidth), height: height)
+    }
+
+    /// A firmer caret than AppKit's hairline, easy to find on the page.
+    static let caretWidth: CGFloat = 2
+
+    /// The wider caret must be erased whole when it blinks off.
+    override func setNeedsDisplay(_ rect: NSRect, avoidAdditionalLayout flag: Bool) {
+        var rect = rect
+        if rect.width <= Self.caretWidth { rect.size.width = Self.caretWidth + 1 }
+        super.setNeedsDisplay(rect, avoidAdditionalLayout: flag)
     }
 
     // MARK: Return and Tab

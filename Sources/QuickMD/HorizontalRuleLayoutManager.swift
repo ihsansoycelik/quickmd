@@ -23,6 +23,31 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
     var panelFillColor: NSColor = .clear
     /// Outline of an unticked checkbox.
     var checkboxColor: NSColor = .secondaryLabelColor
+    /// Fill of a ticked checkbox: the caret's colour, the one accent.
+    var checkboxAccent: NSColor = .controlAccentColor
+    /// Opacity of a callout's tinted ground.
+    var calloutWash: CGFloat = 0.07
+    /// Grounds drawn as rounded chips that hug the text (inline code,
+    /// `==marks==`) instead of filling the whole tall line.
+    var chipColors: [NSColor] = []
+
+    override func fillBackgroundRectArray(_ rectArray: UnsafePointer<NSRect>, count rectCount: Int,
+                                          forCharacterRange charRange: NSRange, color: NSColor) {
+        guard chipColors.contains(where: { $0 == color }), let storage = textStorage,
+              charRange.location < storage.length,
+              let font = storage.attribute(.font, at: charRange.location, effectiveRange: nil) as? NSFont else {
+            return super.fillBackgroundRectArray(rectArray, count: rectCount, forCharacterRange: charRange, color: color)
+        }
+        let glyphHeight = (font.ascender - font.descender).rounded(.up)
+        let pad = (font.pointSize * 0.14).rounded()
+        color.setFill()
+        for i in 0..<rectCount {
+            let r = rectArray[i]
+            let height = min(r.height, glyphHeight + pad)
+            let chip = NSRect(x: r.minX - 2, y: r.maxY - height + pad * 0.25, width: r.width + 4, height: height)
+            NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
+        }
+    }
 
     // MARK: Table grids
 
@@ -218,13 +243,16 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
 
             blocks(.qmCallout) { panel, value, _ in
                 guard let color = value as? NSColor else { return }
+                // A faint wash of the kind's own colour, and its bar inside the panel's curve.
+                let path = CGPath(roundedRect: panel, cornerWidth: 8, cornerHeight: 8, transform: nil)
                 context.saveGState()
-                context.setFillColor(panelFillColor.cgColor)
-                context.addPath(CGPath(roundedRect: panel, cornerWidth: 6, cornerHeight: 6, transform: nil))
+                context.setFillColor(color.withAlphaComponent(calloutWash).cgColor)
+                context.addPath(path)
                 context.fillPath()
+                context.addPath(path)
+                context.clip()
                 context.setFillColor(color.cgColor)
-                context.addPath(CGPath(roundedRect: CGRect(x: panel.minX, y: panel.minY, width: 3, height: panel.height), cornerWidth: 1.5, cornerHeight: 1.5, transform: nil))
-                context.fillPath()
+                context.fill(CGRect(x: panel.minX, y: panel.minY, width: 3, height: panel.height))
                 context.restoreGState()
             }
         }
@@ -259,7 +287,7 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
             let fragment = lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
             let baseline = fragment.minY + location(forGlyphAt: glyphs.location).y
             let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont ?? .systemFont(ofSize: 15)
-            let side = (font.pointSize * 0.95).rounded()
+            let side = (font.pointSize * 0.85).rounded()
             let rect = NSRect(
                 x: origin.x + box.minX + 1,  // left-aligned: `[x]` is wider than `[ ]`
                 y: origin.y + baseline - font.capHeight / 2 - side / 2,
@@ -267,7 +295,7 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
             )
             let path = NSBezierPath(roundedRect: rect.insetBy(dx: 0.75, dy: 0.75), xRadius: side * 0.24, yRadius: side * 0.24)
             if checked {
-                NSColor.controlAccentColor.setFill()
+                checkboxAccent.setFill()
                 path.fill()
                 let tick = NSBezierPath()
                 tick.move(to: NSPoint(x: rect.minX + side * 0.26, y: rect.minY + side * 0.52))

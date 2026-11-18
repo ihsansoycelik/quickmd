@@ -33,7 +33,9 @@ enum Design {
     /// Code blocks and tables sit a touch smaller than prose.
     static let codeScale: CGFloat = 0.92
     /// Heading sizes relative to body, H1…H3; H4+ are body size.
-    static let headingScale: [CGFloat] = [1.3, 1.15, 1.0]
+    static let headingScale: [CGFloat] = [1.5, 1.25, 1.08]
+    /// Air above a heading, in body sizes, H1…H3 (H4+ use the last).
+    static let headingSpaceAbove: [CGFloat] = [1.4, 1.1, 0.75]
 
     static func font(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
         .monospacedSystemFont(ofSize: size, weight: weight)
@@ -85,15 +87,15 @@ struct Palette {
         switch theme {
         case .light:
             return Palette(
-                background: srgb(0xF7F7F7), text: srgb(0x262626), strong: srgb(0x0A0A0A),
-                syntax: srgb(0xA8A8A8), divider: srgb(0xDADADA), codeBackground: srgb(0x000000, 0.045),
+                background: srgb(0xF8F7F4), text: srgb(0x2A2926), strong: srgb(0x12110F),
+                syntax: srgb(0xA9A7A1), divider: srgb(0xDEDCD6), codeBackground: srgb(0x3A3426, 0.055),
                 link: srgb(0x0A6FC2), cursor: blue, selection: srgb(0xB3DDFB),
                 highlight: srgb(0xFFF1A8), findHighlight: srgb(0xFFD22E, 0.55)
             )
         case .dark:
             return Palette(
-                background: srgb(0x1A1A1A), text: srgb(0xCFCFCF), strong: srgb(0xF2F2F2),
-                syntax: srgb(0x5E5E5E), divider: srgb(0x353535), codeBackground: srgb(0xFFFFFF, 0.06),
+                background: srgb(0x1A1918), text: srgb(0xD3D0CA), strong: srgb(0xF4F2EE),
+                syntax: srgb(0x65625D), divider: srgb(0x36342F), codeBackground: srgb(0xFFF6E6, 0.06),
                 link: srgb(0x5CB8F5), cursor: blue, selection: srgb(0x1F4A6B),
                 highlight: srgb(0x5A4B12), findHighlight: srgb(0xFAC747, 0.42)
             )
