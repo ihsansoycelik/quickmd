@@ -23,9 +23,18 @@ enum Settings {
         }
     }
 
+    /// Set by the app delegate so the window appearance is updated
+    /// before observers resolve the new theme (notification order is not
+    /// guaranteed, and `.system` must no longer see the old fixed look).
+    static var applicationAppearanceUpdater: (() -> Void)?
+
     static var themePreference: ThemePreference {
         get { ThemePreference(rawValue: defaults.string(forKey: "Theme") ?? "") ?? .system }
-        set { defaults.set(newValue.rawValue, forKey: "Theme"); changed() }
+        set {
+            defaults.set(newValue.rawValue, forKey: "Theme")
+            applicationAppearanceUpdater?()
+            changed()
+        }
     }
 
     static var theme: Theme { themePreference.resolve() }

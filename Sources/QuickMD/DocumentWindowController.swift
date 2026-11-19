@@ -103,8 +103,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     override func synchronizeWindowTitleWithDocumentName() {
         super.synchronizeWindowTitleWithDocumentName()
         // A renamed or newly saved file moves the base for relative links.
-        // Title text only, no proxy icon.
-        window?.standardWindowButton(.documentIconButton)?.isHidden = true
         editor.textView.baseURL = markdownDocument?.fileURL?.deletingLastPathComponent()
     }
 
@@ -112,12 +110,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         let theme = Settings.theme
         window?.appearance = NSAppearance(named: theme.appearanceName)
         window?.backgroundColor = Palette.for(theme).background
+        // Settings › Open documents in tabs should reach windows that
+        // are already open, not just the next one.
+        window?.tabbingMode = Settings.opensInTabs ? .preferred : .disallowed
     }
 
     // MARK: Export
 
     private var documentTitle: String {
-        ((markdownDocument?.displayName ?? "Untitled") as NSString).deletingPathExtension
+        ((markdownDocument?.displayName ?? L("Untitled")) as NSString).deletingPathExtension
     }
 
     /// The note as a light, standalone page in the current style.

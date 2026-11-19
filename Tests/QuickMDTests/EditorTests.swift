@@ -53,6 +53,18 @@ struct EditorTests {
         #expect(view.string == "- a\n")
     }
 
+    @Test func returnOnAnEmptyTaskEndsTheList() {
+        let view = editor("- [ ]‸")
+        view.insertNewline(nil)
+        #expect(view.string == "")
+    }
+
+    @Test func returnAfterASpacedRuleDoesNotStartAList() {
+        let view = editor("- - -‸")
+        view.insertNewline(nil)
+        #expect(view.string == "- - -\n")
+    }
+
     @Test func returnInCodeKeepsIndentOnly() {
         let view = editor("```yaml\n  - item‸\n```")
         view.insertNewline(nil)
@@ -76,6 +88,33 @@ struct EditorTests {
         view.setSelectedRange(NSRange(location: 5, length: 0))
         view.insertTab(nil)
         #expect(view.string == "```\n|\ta|b|\n```")
+    }
+
+    @Test func orderedParenListContinues() {
+        let view = editor("1) ‸foo")
+        view.insertNewline(nil)
+        #expect(view.string == "1) \n2) foo")
+    }
+
+    @Test func orderedTaskKeepsItsBox() {
+        let view = editor("1. [ ] foo‸")
+        view.insertNewline(nil)
+        #expect(view.string == "1. [ ] foo\n2. [ ] ")
+    }
+
+    @Test func taskBoxAllowsExtraSpaces() {
+        #expect(Checkbox.boxRange(in: "-   [ ] task")?.location == 4)
+        #expect(Checkbox.boxRange(in: "1)  [x] task")?.location == 4)
+        #expect(Checkbox.isChecked("1.   [X] task"))
+        #expect(Checkbox.toggling("-  [ ] task") == "-  [x] task")
+        #expect(Checkbox.boxRange(in: "- [ ]text") == nil)
+    }
+
+    @Test func duplicateHeadingAnchorsMatchThePreview() {
+        #expect(Headings.anchors(in: "# A\n\n# A\n\n# A-1\n").map(\.id) == ["a", "a-1", "a-1-1"])
+        let view = editor("# A\n\n# A\n\n# A-1\n")
+        view.jumpToHeading("a-1")
+        #expect(view.selectedRange().location == 5)
     }
 
     // MARK: Format commands
@@ -295,6 +334,24 @@ struct ReadingLookTests {
         let ns = s.string as NSString
         #expect(s.attribute(.qmImage, at: ns.range(of: "![alt]").location, effectiveRange: nil) as? String == "pics/x.png")
         #expect(s.attribute(.qmImage, at: ns.range(of: "![i]").location, effectiveRange: nil) == nil)
+    }
+
+    @Test func orderedTasksGetBoxesAndHideTheirMarkers() {
+        let s = storage("1. [ ] one\n1) [x] two\n")
+        let ns = s.string as NSString
+        #expect(s.attribute(.qmCheckbox, at: ns.range(of: "[ ]").location, effectiveRange: nil) != nil)
+        #expect(s.attribute(.qmCheckbox, at: ns.range(of: "[x]").location, effectiveRange: nil) != nil)
+        #expect(s.attribute(.qmTaskBullet, at: 0, effectiveRange: nil) != nil)
+        #expect(s.attribute(.qmTaskBullet, at: ns.range(of: "1)").location, effectiveRange: nil) != nil)
+    }
+
+    @Test func starredAndSpacedRulesAreRules() {
+        for line in ["***", "___", "- - -", "  * * *"] {
+            let s = storage(line + "\n")
+            #expect(HorizontalRuleLayoutManager.isHorizontalRuleLine(line), "line should be a rule")
+            #expect(s.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == NSColor.clear,
+                    "\(line) should not draw its markers")
+        }
     }
 
     @Test func taskBulletFoldsAndFrontMatterKeysStay() {

@@ -233,6 +233,8 @@ final class SlashMenu: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     /// Under the `/`, or above it when the screen runs out below.
     private func place() {
         guard let panel else { return }
+        // A forced app theme must reach this child panel too.
+        panel.appearance = textView.window?.appearance
         let rows = CGFloat(min(commands.count, Self.maxRows))
         let height = rows * Self.rowHeight + Self.inset * 2
         var actual = NSRange()
@@ -260,6 +262,9 @@ final class SlashMenu: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         for name in [NSWindow.didResignKeyNotification, NSWindow.didResizeNotification, NSWindow.willCloseNotification] {
             observers.append(center.addObserver(forName: name, object: window, queue: .main, using: closeMenu))
         }
+        observers.append(center.addObserver(forName: .editorSettingsChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.place() }
+        })
     }
 
     private func removeObservers() {

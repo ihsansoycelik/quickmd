@@ -24,6 +24,7 @@
 "Rename…" = "Yeniden Adlandır…";
 "Move To…" = "Taşı…";
 "Revert To Saved" = "Kaydedilmiş Sürüme Dön";
+"Browse All Versions…" = "Tüm Sürümlere Göz At…";
 "Export as HTML…" = "HTML Olarak Dışa Aktar…";
 "Export as PDF…" = "PDF Olarak Dışa Aktar…";
 "Page Setup…" = "Sayfa Yapısı…";
@@ -164,3 +165,10 @@
 "Table, %d rows, %d columns" = "Tablo, %d satır, %d sütun";
 
 "Start writing. Type / to insert a block." = "Yazmaya başla. Blok eklemek için / yaz.";
+"Default for .md" = ".md için Varsayılan";
+"QuickMD already opens Markdown files" = "Markdown dosyaları zaten QuickMD ile açılıyor";
+"Finder and Quick Look offer “Open with QuickMD” for .md files." = "Finder ve Quick Look, .md dosyaları için “QuickMD ile Aç” seçeneğini sunuyor.";
+"Untitled" = "Başlıksız";
+"Note text" = "Not metni";
+"Back to text" = "Metne dön";
+"Copy code" = "Kodu kopyala";

@@ -45,7 +45,6 @@ enum MainMenu {
         menu.addItem(item("About QuickMD", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Settings…", #selector(AppDelegate.showSettings(_:)), ",", target: app))
-        menu.addItem(item("Default App for Markdown", #selector(AppDelegate.makeDefault(_:)), target: app))
         menu.addItem(.separator())
         let services = NSMenu(title: "Services")
         menu.addItem(submenu(services))
@@ -182,8 +181,6 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Indent", #selector(MarkdownTextView.indentLines(_:)), "]"))
         menu.addItem(item("Outdent", #selector(MarkdownTextView.outdentLines(_:)), "["))
-        menu.addItem(.separator())
-
         return menu
     }
 

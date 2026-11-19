@@ -63,7 +63,7 @@ enum MarkdownStyler {
     )
     private static let codePattern = try! NSRegularExpression(pattern: #"`([^`\n\r\u2029]+)`"#)
     private static let quotePattern = try! NSRegularExpression(pattern: #"^(>+ ?)"#)
-    private static let listMarkerPattern = try! NSRegularExpression(pattern: #"^[ \t]*([-*+]|\d+\.)[ \t]"#)
+    private static let listMarkerPattern = try! NSRegularExpression(pattern: #"^[ \t]*([-*+]|\d+[.)])[ \t]+"#)
     /// `[text](url)` and `![alt](url)`. The brackets and the URL dim; the
     /// text is the link.
     private static let mdLinkPattern = try! NSRegularExpression(
@@ -396,8 +396,9 @@ enum MarkdownStyler {
             if mayBeListMarker(ns, content),
                let marker = listMarkerPattern.firstMatch(in: text, range: content) {
                 let bullet = marker.range(at: 1)
-                // A task's box stands in for its bullet: the `-` hides in reading mode.
-                let isTask = bullet.length == 1 && Checkbox.boxRange(in: line) != nil
+                // A task's box stands in for its marker: the bullet (or
+                // the ordered number) hides in reading mode.
+                let isTask = Checkbox.boxRange(in: line) != nil
                 storage.addAttributes([.foregroundColor: style.syntax, .qmKeepSyntax: true], range: bullet)
                 let advance = (" " as NSString).size(withAttributes: [.font: style.base]).width
                 let isBullet = bullet.length == 1 && !isTask && "-*+".utf16.contains(ns.character(at: bullet.location))
@@ -563,7 +564,10 @@ enum MarkdownStyler {
         while i < end, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i += 1 }
         guard i < end else { return false }
         let c = ns.character(at: i)
-        return c == 0x2D || c == 0x2A || c == 0x2B
+        if c == 0x2D || c == 0x2A || c == 0x2B { return true }  // - * +
+        guard (0x30...0x39).contains(c) else { return false }
+        while i < end, (0x30...0x39).contains(ns.character(at: i)) { i += 1 }
+        return i < end && (ns.character(at: i) == 0x2E || ns.character(at: i) == 0x29)  // . )
     }
 
     /// `^\s*\$\$.+\$\$\s*$` without a regex pass: after indent the line
@@ -575,8 +579,8 @@ enum MarkdownStyler {
         return i + 1 < end && ns.character(at: i) == 0x24 && ns.character(at: i + 1) == 0x24
     }
 
-    /// `^[ \t]*([-*+]|\d+\.)[ \t]` without a regex pass: after indent, a
-    /// bullet character or digits and a dot. The regex still decides.
+    /// `^[ \t]*([-*+]|\d+[.)])[ \t]+` without a regex pass: after indent,
+    /// a bullet character or digits and a dot/paren. The regex still decides.
     private static func mayBeListMarker(_ ns: NSString, _ content: NSRange) -> Bool {
         var i = content.location
         let end = NSMaxRange(content)
@@ -587,7 +591,7 @@ enum MarkdownStyler {
         guard (0x30...0x39).contains(c) else { return false }
         var j = i
         while j < end, (0x30...0x39).contains(ns.character(at: j)) { j += 1 }
-        return j + 1 < end && ns.character(at: j) == 0x2E  // . after digits
+        return j + 1 < end && (ns.character(at: j) == 0x2E || ns.character(at: j) == 0x29)  // . )
     }
 
     // MARK: Inline

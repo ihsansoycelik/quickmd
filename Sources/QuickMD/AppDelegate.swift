@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var appearanceObservation: NSKeyValueObservation?
+    private var settingsObserver: Any?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // The shared controller must exist before any file is opened.
@@ -11,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         FolderAccess.restore()
         NSApp.mainMenu = MainMenu.build(target: self)
         NSApp.servicesProvider = self
+        Settings.applicationAppearanceUpdater = { [weak self] in self?.applyApplicationAppearance() }
+        applyApplicationAppearance()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -25,12 +28,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { _ in NotificationCenter.default.post(name: .editorSettingsChanged, object: nil) }
+        // Menus, panels and controls use the app's appearance too, so a
+        // forced Light/Dark never leaves a system-drawn control behind.
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: .editorSettingsChanged, object: nil, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.applyApplicationAppearance() } }
         #if !APPSTORE
         // Set by scripts/build-app.sh --install; the App Store build only does it from the menu.
         if CommandLine.arguments.contains("--make-default") {
             makeDefault(nil)
         }
         #endif
+    }
+
+    /// App-wide appearance: a fixed Light/Dark choice reaches menus and
+    /// panels; System leaves AppKit following macOS.
+    private func applyApplicationAppearance() {
+        let wanted = Settings.themePreference == .system
+            ? nil : NSAppearance(named: Settings.theme.appearanceName)
+        guard NSApp.appearance?.name != wanted?.name else { return }
+        NSApp.appearance = wanted
     }
 
     // MARK: Services
@@ -51,7 +68,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { NSDocumentController.shared.newDocument(nil) }
+        // Clicking the Dock icon after minimizing should bring the note
+        // back, not create another blank one. Settings alone being open
+        // doesn't count as a visible document.
+        let miniaturized = NSApp.windows.filter { $0.isMiniaturized }
+        if !miniaturized.isEmpty {
+            miniaturized.forEach { $0.deminiaturize(nil) }
+            miniaturized.first?.makeKeyAndOrderFront(nil)
+            return true
+        }
+        guard !flag else { return true }
+        if let document = NSDocumentController.shared.documents.first {
+            document.showWindows()
+        } else {
+            NSDocumentController.shared.newDocument(nil)
+        }
         return true
     }
 
@@ -59,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     static let markdownTypes = ["net.daringfireball.markdown"]
 
-    private var isDefault: Bool {
+    static var isDefaultApp: Bool {
         guard let type = UTType("net.daringfireball.markdown"),
               let current = NSWorkspace.shared.urlForApplication(toOpen: type) else { return false }
         return current.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL
@@ -67,6 +98,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Makes QuickMD the app Finder and Quick Look offer for .md files.
     @objc func makeDefault(_ sender: Any?) {
+        if Self.isDefaultApp {
+            guard sender != nil else { return }
+            let alert = NSAlert()
+            alert.messageText = L("QuickMD already opens Markdown files")
+            alert.informativeText = L("Finder and Quick Look offer “Open with QuickMD” for .md files.")
+            alert.addButton(withTitle: L("OK"))
+            alert.runModal()
+            return
+        }
         let types = Self.markdownTypes.compactMap { UTType($0) }
         let group = DispatchGroup()
         var failure: Error?
@@ -78,6 +118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }
         }
         group.notify(queue: .main) {
+            // The Settings pane refreshes its button from this state.
+            NotificationCenter.default.post(name: .editorSettingsChanged, object: nil)
             guard sender != nil else { return }
             let alert = NSAlert()
             if let failure {
@@ -119,8 +161,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         switch menuItem.action {
         case #selector(chooseTheme(_:)):
             menuItem.state = Settings.themePreference.rawValue == menuItem.representedObject as? String ? .on : .off
-        case #selector(makeDefault(_:)):
-            menuItem.state = isDefault ? .on : .off
         default:
             break
         }

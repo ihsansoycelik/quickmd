@@ -1,11 +1,11 @@
 import AppKit
 
 /// NSLayoutManager subclass that paints a full-width horizontal rule
-/// over any line whose entire content is HR markers (`-` and/or `─`,
-/// 3+ characters). The HR characters themselves are kept in storage
-/// (so the file on disk stays plain markdown — `---`) but rendered
-/// with `foregroundColor = .clear` from the styling pass, so the only
-/// visible thing on the line is the rule we draw here.
+/// over any line whose entire content is HR markers (`-`, `*`, `_` or
+/// `─`, 3+ of the same, spaces allowed). The HR characters themselves
+/// are kept in storage (so the file on disk stays plain markdown —
+/// `---`) but rendered with `foregroundColor = .clear` from the styling
+/// pass, so the only visible thing on the line is the rule we draw here.
 ///
 /// The line spans the line fragment's full width, which means it
 /// tracks panel-width changes for free — resize the window and the
@@ -359,16 +359,27 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
     }
 
     /// Pure: is the given line content (a line range in `nsString`)
-    /// an HR-only line — at least three characters, all of which are
-    /// either `-` (0x2D) or `─` (0x2500), with the trailing newline
-    /// allowed.
+    /// an HR-only line — up to three spaces in, then at least three of
+    /// the same marker (`-`, `*`, `_`, or `─`), spaces allowed between
+    /// them, with the trailing newline allowed.
     static func isHorizontalRuleLine(lineRange: NSRange, in nsString: NSString) -> Bool {
         let content = lineContent(lineRange, in: nsString)
-        if content.length < 3 { return false }
-        for i in 0..<content.length {
-            let c = nsString.character(at: content.location + i)
-            if c != 0x2D && c != 0x2500 { return false }
+        var i = content.location
+        let end = NSMaxRange(content)
+        while i < end, nsString.character(at: i) == 0x20 { i += 1 }
+        guard i - content.location <= 3 else { return false }
+        var marker: unichar = 0
+        var count = 0
+        while i < end {
+            let c = nsString.character(at: i)
+            if c == 0x20 || c == 0x09 { i += 1; continue }
+            guard c == 0x2D || c == 0x2A || c == 0x5F || c == 0x2500 else { return false }  // - * _ ─
+            let kind: unichar = c == 0x2500 ? 0x2D : c
+            if marker == 0 { marker = kind } else if marker != kind { return false }
+            count += 1
+            i += 1
         }
+        guard count >= 3 else { return false }
         // Under a line of text, dashes make that line a heading instead.
         return setextLevel(underline: lineRange, in: nsString) == nil
     }

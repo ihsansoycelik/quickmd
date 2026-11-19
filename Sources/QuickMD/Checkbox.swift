@@ -9,7 +9,8 @@ import Foundation
 enum Checkbox {
     /// Range of the `[ ]` / `[x]` marker within a single line, or nil
     /// when the line isn't a task item. Leading whitespace is allowed
-    /// so indented sub-tasks work.
+    /// so indented sub-tasks work. Both unordered (`- [ ]`) and ordered
+    /// (`1. [ ]`, `1) [ ]`) items count, as they do in the renderer.
     static func boxRange(in line: String) -> NSRange? {
         let ns = line as NSString
         var i = 0
@@ -17,19 +18,32 @@ enum Checkbox {
         while i < ns.length, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 {
             i += 1
         }
-        // Bullet marker.
+        // List marker: `- * +`, or digits followed by `.` or `)`.
         guard i < ns.length else { return nil }
         let bullet = ns.character(at: i)
-        guard bullet == 0x2D || bullet == 0x2A || bullet == 0x2B else { return nil }  // - * +
-        i += 1
-        // Exactly one space between the bullet and the box.
-        guard i < ns.length, ns.character(at: i) == 0x20 else { return nil }
-        i += 1
+        if bullet == 0x2D || bullet == 0x2A || bullet == 0x2B {  // - * +
+            i += 1
+        } else if (0x30...0x39).contains(bullet) {
+            while i < ns.length, (0x30...0x39).contains(ns.character(at: i)) { i += 1 }
+            guard i < ns.length, ns.character(at: i) == 0x2E || ns.character(at: i) == 0x29 else { return nil }  // . )
+            i += 1
+        } else {
+            return nil
+        }
+        // At least one space or tab between the marker and the box.
+        guard i < ns.length, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 else { return nil }
+        while i < ns.length, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i += 1 }
         // The box itself: [ ], [x] or [X].
         guard i + 2 < ns.length, ns.character(at: i) == 0x5B else { return nil }      // [
         let state = ns.character(at: i + 1)
         guard state == 0x20 || state == 0x78 || state == 0x58 else { return nil }     // space x X
         guard ns.character(at: i + 2) == 0x5D else { return nil }                     // ]
+        // A task's text starts after a space or tab; `- [ ]text` is a link
+        // label, not a task, in the renderer.
+        if i + 3 < ns.length {
+            let after = ns.character(at: i + 3)
+            guard after == 0x20 || after == 0x09 else { return nil }
+        }
         return NSRange(location: i, length: 3)
     }
 

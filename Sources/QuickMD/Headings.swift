@@ -9,6 +9,21 @@ enum Headings {
         let location: Int
     }
 
+    /// Heading anchors exactly as the renderer names them, including the
+    /// `-1`, `-2` suffixes duplicate titles get. `#slug` links resolve
+    /// against this list rather than the bare slug.
+    static func anchors(in text: String) -> [(id: String, location: Int)] {
+        var used = Set<String>()
+        return find(in: text).map { heading in
+            let base = MarkdownHTML.slug(heading.title)
+            var id = base
+            var n = 0
+            while used.contains(id) { n += 1; id = "\(base)-\(n)" }
+            used.insert(id)
+            return (id, heading.location)
+        }
+    }
+
     /// ATX headings (up to three spaces in) and setext ones (`===`/`---`
     /// under text), outside fenced code and front matter: the headings
     /// the preview renders.

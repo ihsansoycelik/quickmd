@@ -12,10 +12,17 @@ final class SettingsWindowController: NSWindowController {
         let window = NSWindow(contentViewController: SettingsViewController())
         window.styleMask = [.titled, .closable]
         window.title = L("Settings")
+        window.appearance = NSAppearance(named: Settings.theme.appearanceName)
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.center()
         window.setFrameAutosaveName("QuickMDSettings")
+    }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        // The default app may have changed in another app while closed.
+        NotificationCenter.default.post(name: .editorSettingsChanged, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -59,6 +66,7 @@ private final class SettingsViewController: NSViewController {
         size.increment = 1
         size.target = self
         size.action = #selector(changeSize(_:))
+        size.setAccessibilityLabel(L("Text size"))
         sizeLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         let sizeRow = NSStackView(views: [sizeLabel, size])
         sizeRow.spacing = 6
@@ -69,6 +77,7 @@ private final class SettingsViewController: NSViewController {
         }
         starter.target = self
         starter.action = #selector(chooseStarter(_:))
+        starter.setAccessibilityLabel(L("New document"))
 
         row("Text size", sizeRow)
         row("Appearance", theme)
@@ -102,6 +111,10 @@ private final class SettingsViewController: NSViewController {
         if let item = starter.itemArray.first(where: { $0.representedObject as? String == Settings.newDocumentStarter.rawValue }) {
             starter.select(item)
         }
+        // The pane uses the same forced appearance as the editor.
+        view.window?.appearance = NSAppearance(named: Settings.theme.appearanceName)
+        defaultApp.title = AppDelegate.isDefaultApp ? L("Default for .md") : L("Make Default for .md")
+        defaultApp.isEnabled = !AppDelegate.isDefaultApp
     }
 
     @objc private func changeSize(_ sender: NSStepper) { Settings.fontSize = CGFloat(sender.doubleValue) }

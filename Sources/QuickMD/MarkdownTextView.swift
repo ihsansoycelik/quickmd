@@ -69,6 +69,11 @@ final class MarkdownTextView: NSTextView {
         let afterCaret = ns.substring(with: NSRange(location: selection.location, length: NSMaxRange(line) - selection.location))
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // `- - -` and `* * *` are rules, not list items.
+        if HorizontalRuleLayoutManager.isHorizontalRuleLine(lineRange: line, in: ns) {
+            return super.insertNewline(sender)
+        }
+
         if body.hasPrefix(">") {
             let quote = body.prefix(while: { $0 == ">" || $0 == " " })
             if body.trimmingCharacters(in: CharacterSet(charactersIn: "> ")).isEmpty, afterCaret.isEmpty {
@@ -476,9 +481,9 @@ final class MarkdownTextView: NSTextView {
     }
 
     /// Puts the caret on the heading whose anchor (as the preview makes them) is `id`.
-    private func jumpToHeading(_ id: String) {
+    func jumpToHeading(_ id: String) {
         let wanted = id.lowercased()
-        guard let heading = Headings.find(in: string).first(where: { MarkdownHTML.slug($0.title) == wanted }) else {
+        guard let heading = Headings.anchors(in: string).first(where: { $0.id.lowercased() == wanted }) else {
             NSSound.beep()
             return
         }
@@ -523,7 +528,7 @@ final class MarkdownTextView: NSTextView {
     @objc func toggleQuote(_ sender: Any?) { toggleLinePrefix("> ", pattern: #"^(\s*)>\s?"#, swapsMarkers: false) }
 
     @objc func toggleNumberedList(_ sender: Any?) {
-        let pattern = #"^(\s*)\d+\.\s"#
+        let pattern = #"^(\s*)\d+[.)][ \t]+(?:\[[ xX]\](?:[ \t]+|$))?"#
         let lines = selectedLines()
         let filled = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         let allNumbered = !filled.isEmpty && filled.allSatisfy { $0.range(of: pattern, options: .regularExpression) != nil }
@@ -533,7 +538,7 @@ final class MarkdownTextView: NSTextView {
             // A blank line takes the marker only when it's the whole selection.
             guard !line.trimmingCharacters(in: .whitespaces).isEmpty || lines.count == 1 else { return line }
             n += 1
-            let bare = line.replacingOccurrences(of: #"^(\s*)(?:[-*+]\s(?:\[[ xX]\](?:\s|$))?|\d+\.\s)"#, with: "$1", options: .regularExpression)
+            let bare = line.replacingOccurrences(of: #"^(\s*)(?:[-*+][ \t]+|\d+[.)][ \t]+)(?:\[[ xX]\](?:[ \t]+|$))?"#, with: "$1", options: .regularExpression)
             let indent = bare.prefix(while: { $0 == " " || $0 == "\t" })
             return indent + "\(n). " + bare.dropFirst(indent.count)
         }
@@ -577,7 +582,7 @@ final class MarkdownTextView: NSTextView {
                   line.range(of: pattern, options: .regularExpression) == nil else { return line }
             // Swap another list marker rather than stacking two.
             let bare = swapsMarkers ? line.replacingOccurrences(
-                of: #"^(\s*)(?:[-*+]\s(?:\[[ xX]\](?:\s|$))?|\d+\.\s|>\s?)"#, with: "$1", options: .regularExpression
+                of: #"^(\s*)(?:[-*+][ \t]+|\d+[.)][ \t]+)(?:\[[ xX]\](?:[ \t]+|$))?|^(\s*)>\s?"#, with: "$1$2", options: .regularExpression
             ) : line
             let indent = bare.prefix(while: { $0 == " " || $0 == "\t" })
             return indent + prefix + bare.dropFirst(indent.count)

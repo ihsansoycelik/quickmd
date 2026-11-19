@@ -9,20 +9,26 @@ enum SmartEditing {
     static func nextListMarker(for line: String) -> String? {
         // Task items are bullets too, so they have to be matched before
         // the plain-bullet rule below — otherwise Enter continues the
-        // list but drops the box.
-        if let match = line.firstMatch(of: /^([-*+])\s\[[ xX]\]\s/) {
+        // list but drops the box. Both bullet kinds, and any run of
+        // spaces after the marker, are valid CommonMark.
+        if let match = line.firstMatch(of: /^([-*+])[ \t]+\[[ xX]\](?:[ \t]|$)/) {
             if isEmptyAfter(match.range, in: line) { return "" }
             return "\(match.1) [ ] "
         }
-        if let match = line.firstMatch(of: /^([-*+])\s/) {
+        if let match = line.firstMatch(of: /^(\d+)([.)])[ \t]+\[[ xX]\](?:[ \t]|$)/) {
+            let n = Int(match.1) ?? 0
+            if isEmptyAfter(match.range, in: line) { return "" }
+            return "\(n + 1)\(match.2) [ ] "
+        }
+        if let match = line.firstMatch(of: /^([-*+])[ \t]+/) {
             let bullet = String(match.1)
             if isEmptyAfter(match.range, in: line) { return "" }
             return "\(bullet) "
         }
-        if let match = line.firstMatch(of: /^(\d+)\.\s/) {
+        if let match = line.firstMatch(of: /^(\d+)([.)])[ \t]+/) {
             let n = Int(match.1) ?? 0
             if isEmptyAfter(match.range, in: line) { return "" }
-            return "\(n + 1). "
+            return "\(n + 1)\(match.2) "
         }
         if let match = line.firstMatch(of: /^([A-Z])\.\s/) {
             if isEmptyAfter(match.range, in: line) { return "" }

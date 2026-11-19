@@ -16,7 +16,7 @@ A native macOS Markdown editor. Opens `.md` files from Finder and Quick Look ("O
 
 ## Watching an agent write
 
-With **Settings › General › Watch agents write live** on (the default), when an agent or any other app writes a note that's open in QuickMD, the change types itself in: the window comes forward without taking the keyboard, follows the new text, and the part that arrived glows for a moment. A note opened within three seconds of being written plays in from empty. `==text==` is drawn highlighted, so an agent can mark what you should read first.
+With **Settings › Watch agents write live** on (the default), when an agent or any other app writes a note that's open in QuickMD, the change types itself in: the window comes forward without taking the keyboard, follows the new text, and the part that arrived glows for a moment. A note opened within three seconds of being written plays in from empty. `==text==` is drawn highlighted, so an agent can mark what you should read first.
 
 It works with any agent that writes files. The agent only has to open the note in QuickMD, before writing when the file exists:
 

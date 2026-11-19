@@ -76,7 +76,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.isContinuousSpellCheckingEnabled = false
         textView.smartInsertDeleteEnabled = false
         textView.delegate = self
-        textView.setAccessibilityLabel("Note")
+        textView.setAccessibilityLabel(L("Note text"))
         textView.textStorage?.delegate = self
 
         root.addSubview(scrollView)
@@ -240,6 +240,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// The arrived text keeps its glow a moment, then lets it go.
     private func fadeGlow(_ range: NSRange) {
         guard range.length > 0, let layoutManager = textView.layoutManager else { return }
+        // Reduce Motion: leave no fading highlight behind.
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { clearGlow(); return }
         glowFade?.invalidate()
         glowRange = range
         var step = 0
@@ -646,6 +648,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let theme = Settings.theme
         let palette = Palette.for(theme)
         let font = MarkdownStyler.bodyFont(size: Settings.fontSize)
+        let styleChanged = appliedStyle?.size != Settings.fontSize || appliedStyle?.theme != theme
+        appliedStyle = (Settings.fontSize, theme)
         view.appearance = NSAppearance(named: theme.appearanceName)
         textView.insertionPointColor = palette.cursor
         textView.selectedTextAttributes = [.backgroundColor: palette.selection]
@@ -662,8 +666,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         }
         textView.font = font
         // An empty note says where to start, and that `/` opens the blocks.
+        // Secondary, but opaque enough to read: syntax grey is for
+        // marks, not for the only sentence on an empty page.
         let hint = NSAttributedString(string: L("Start writing. Type / to insert a block."), attributes: [
-            .font: font, .foregroundColor: palette.syntax,
+            .font: font, .foregroundColor: palette.text.withAlphaComponent(0.68),
             .paragraphStyle: MarkdownStyler.bodyParagraph(font: font),
         ])
         if textView.responds(to: NSSelectorFromString("setPlaceholderAttributedString:")) {
@@ -674,10 +680,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             .foregroundColor: palette.text,
             .paragraphStyle: MarkdownStyler.bodyParagraph(font: font),
         ]
-        restyleForDisplay()
+        if styleChanged { restyleForDisplay() }
         updateColumn()
         textView.needsDisplay = true
     }
+
+    /// Size and theme, the only settings that change the text's attributes.
+    private var appliedStyle: (size: CGFloat, theme: Theme)?
 
     /// The text keeps to `Design.measure` characters; extra width
     /// becomes equal margins either side.

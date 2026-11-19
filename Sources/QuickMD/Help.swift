@@ -38,7 +38,7 @@ enum Help {
 
     ## Files
 
-    - Notes save themselves. File › Revert To Saved goes back to any earlier version.
+    - Notes save themselves. File › Browse All Versions… goes back to earlier versions; File › Revert To Saved returns to the last saved copy.
     - File › Export as HTML or PDF, Edit › Copy as HTML, File › Print.
     - When another app changes an open note and nothing is unsaved, QuickMD reloads it.
     - Reopened notes come back with the caret and the view where you left them.
@@ -87,7 +87,7 @@ enum Help {
 
     ## Dosyalar
 
-    - Notlar kendiliğinden kaydedilir. Dosya › Kaydedilmiş Sürüme Dön eski sürümlere götürür.
+    - Notlar kendiliğinden kaydedilir. Dosya › Tüm Sürümlere Göz At… eski sürümlere götürür; Dosya › Kaydedilmiş Sürüme Dön son kaydedilen kopyaya döner.
     - Dosya › HTML ya da PDF olarak dışa aktar, Düzen › HTML Olarak Kopyala, Dosya › Yazdır.
     - Açık bir notu başka bir uygulama değiştirirse ve kaydedilmemiş bir şey yoksa QuickMD onu yeniden yükler.
     - Yeniden açılan not, imleç ve görünüm bıraktığınız yerde açılır.
@@ -95,7 +95,7 @@ enum Help {
 
     ## Bir ajanın yazışını izlemek
 
-    Ayarlar › Ajanların yazışını canlı izle açıkken, başka bir uygulamanın ya da bir ajanın açık nota yazdığı değişiklik kendini yazar ve yeni kısım bir an parlar. Hareketi Azalt açıksa değişiklik hemen görünür.
+    Ayarlar › Ajanların yazışını canlı izle açıkken, başka bir uygulamanın ya da bir ajanın açık nota yazdığı değişiklik kendini yazar ve yeni kısım bir an parlar. Hareketi Azalt açıkken değişiklik hemen görünür.
 
     ## VoiceOver ve klavye
 

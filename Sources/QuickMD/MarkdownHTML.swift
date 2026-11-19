@@ -149,7 +149,7 @@ enum MarkdownHTML {
             guard let note = notes.first(where: { $0.id == id }) else { continue }
             let anchor = footnoteAnchor(id)
             var inner = renderBlocks(note.lines, note.origin, tight: false, context: context)
-            let back = uses[id] != nil ? " <a href=\"#fnref-\(anchor)\" class=\"fnback\" aria-label=\"Back to text\">↩︎</a>" : ""
+            let back = uses[id] != nil ? " <a href=\"#fnref-\(anchor)\" class=\"fnback\" aria-label=\"\(escape(L("Back to text")))\">↩︎</a>" : ""
             if inner.hasSuffix("</p>\n") {
                 inner = String(inner.dropLast(5)) + back + "</p>\n"
             } else {
@@ -333,7 +333,7 @@ enum MarkdownHTML {
                     let cls = lang.isEmpty ? "" : " class=\"language-\(escape(lang))\""
                     // A bar over the code: its language, and a copy button.
                     out += "<div class=\"codeblock\"><div class=\"codebar\"><span class=\"codelang\">\(escape(lang.lowercased()))</span>"
-                        + "<button class=\"copy\" type=\"button\" title=\"Copy\" aria-label=\"Copy code\">\(Icon.copy)\(Icon.check)</button></div>"
+                        + "<button class=\"copy\" type=\"button\" title=\"\(escape(L("Copy")))\" aria-label=\"\(escape(L("Copy code")))\">\(Icon.copy)\(Icon.check)</button></div>"
                         + "<pre><code\(cls)>\(lang.lowercased() == "diff" ? diffLines(source) : SyntaxHighlighter.html(source, language: lang, escape: escape))</code></pre></div>\n"
                 }
                 continue
@@ -1077,6 +1077,7 @@ enum MarkdownHTML {
         transparent: Bool = false, assets: Assets = .cdn
     ) -> String {
         let base = baseURL.map { "<base href=\"\(escape($0.absoluteString))\">" } ?? ""
+        let language = Locale.current.language.languageCode?.identifier ?? "en"
         let dark = theme == .dark
         let size = Int(fontSize.rounded())
         let code = CodeColors.for(theme)
@@ -1130,7 +1131,7 @@ enum MarkdownHTML {
 
         return """
         <!doctype html>
-        <html><head><meta charset="utf-8">
+        <html lang="\(escape(language))"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         \(head)
         <title>\(escape(title))</title>
