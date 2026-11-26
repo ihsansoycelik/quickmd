@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an idea for QuickMD.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: QuickMD keeps one quiet view on purpose (no sidebar, toolbar, preview pane or themes). Ideas that fit into the editor, menus or settings have the best chance.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How you'd like it to work.
+    validations:
+      required: true
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to work on this myself.

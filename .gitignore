@@ -31,3 +31,6 @@ dist/
 # Local agent/tool state
 .claude/
 WATCHDOG.yml
+
+# Agent plans
+.zcode/
