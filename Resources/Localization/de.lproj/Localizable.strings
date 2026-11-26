@@ -1,0 +1,174 @@
+/* QuickMD — Deutsch */
+
+/* App menu */
+"QuickMD" = "QuickMD";
+"About QuickMD" = "Über QuickMD";
+"Settings…" = "Einstellungen…";
+"Default App for Markdown" = "Standard-App für Markdown";
+"Services" = "Dienste";
+"Hide QuickMD" = "QuickMD ausblenden";
+"Hide Others" = "Andere ausblenden";
+"Show All" = "Alle einblenden";
+"Quit QuickMD" = "QuickMD beenden";
+
+/* File */
+"File" = "Ablage";
+"New" = "Neu";
+"New Tab" = "Neuer Tab";
+"New from Template" = "Neu aus Vorlage";
+"Open…" = "Öffnen…";
+"Close" = "Schließen";
+"Save" = "Sichern";
+"Duplicate" = "Duplizieren";
+"Save As…" = "Sichern unter…";
+"Rename…" = "Umbenennen…";
+"Move To…" = "Bewegen nach…";
+"Revert To Saved" = "Zur gesicherten Version zurückkehren";
+"Browse All Versions…" = "Alle Versionen durchsuchen…";
+"Export as HTML…" = "Als HTML exportieren…";
+"Export as PDF…" = "Als PDF exportieren…";
+"Page Setup…" = "Seite einrichten…";
+"Print…" = "Drucken…";
+
+/* Edit */
+"Edit" = "Bearbeiten";
+"Undo" = "Widerrufen";
+"Redo" = "Wiederholen";
+"Cut" = "Ausschneiden";
+"Copy" = "Kopieren";
+"Copy as HTML" = "Als HTML kopieren";
+"Paste" = "Einsetzen";
+"Paste and Match Style" = "Einsetzen und Stil anpassen";
+"Delete" = "Löschen";
+"Select All" = "Alles auswählen";
+"Find" = "Suchen";
+"Find…" = "Suchen…";
+"Find and Replace…" = "Suchen und Ersetzen…";
+"Find Next" = "Nächstes suchen";
+"Find Previous" = "Vorheriges suchen";
+"Use Selection for Find" = "Auswahl für Suche verwenden";
+"Jump to Selection" = "Zur Auswahl springen";
+"Spelling and Grammar" = "Rechtschreibung und Grammatik";
+"Show Spelling and Grammar" = "Rechtschreibung und Grammatik einblenden";
+"Check Document Now" = "Dokument jetzt prüfen";
+"Check Spelling While Typing" = "Rechtschreibung während der Eingabe prüfen";
+"Substitutions" = "Ersetzungen";
+"Smart Quotes" = "Intelligente Anführungszeichen";
+"Smart Dashes" = "Intelligente Striche";
+"Text Replacement" = "Textersetzung";
+"Transformations" = "Umwandlungen";
+"Make Upper Case" = "In Großbuchstaben umwandeln";
+"Make Lower Case" = "In Kleinbuchstaben umwandeln";
+"Capitalize" = "Erste Buchstaben groß";
+"Speech" = "Sprache";
+"Start Speaking" = "Sprechen starten";
+"Stop Speaking" = "Sprechen stoppen";
+
+/* Format */
+"Format" = "Format";
+"Bold" = "Fett";
+"Italic" = "Kursiv";
+"Strikethrough" = "Durchgestrichen";
+"Inline Code" = "Inline-Code";
+"Link" = "Link";
+"Heading %d" = "Überschrift %d";
+"Heading 1" = "Überschrift 1";
+"Heading 2" = "Überschrift 2";
+"Heading 3" = "Überschrift 3";
+"Body Text" = "Fließtext";
+"Text" = "Text";
+"Bulleted List" = "Aufzählungsliste";
+"Numbered List" = "Nummerierte Liste";
+"Task List" = "Aufgabenliste";
+"Mark Task Done" = "Aufgabe als erledigt markieren";
+"Quote" = "Zitat";
+"Code Block" = "Codeblock";
+"Horizontal Rule" = "Horizontale Linie";
+"Table" = "Tabelle";
+"Callout" = "Hinweisfeld";
+"Note" = "Hinweis";
+"Tip" = "Tipp";
+"Important" = "Wichtig";
+"Warning" = "Warnung";
+"Caution" = "Vorsicht";
+"Math Block" = "Formelblock";
+"Mermaid Diagram" = "Mermaid-Diagramm";
+"Indent" = "Einrücken";
+"Outdent" = "Ausrücken";
+"Insert block" = "Block einfügen";
+
+/* View */
+"View" = "Darstellung";
+"Bigger" = "Größer";
+"Smaller" = "Kleiner";
+"Actual Size" = "Tatsächliche Größe";
+"Appearance" = "Erscheinungsbild";
+"Light" = "Hell";
+"Dark" = "Dunkel";
+"System" = "System";
+"Word Count" = "Wortanzahl";
+"Show Tab Bar" = "Tab-Leiste einblenden";
+"Enter Full Screen" = "Vollbildmodus aktivieren";
+
+/* Window, Help */
+"Window" = "Fenster";
+"Minimize" = "Im Dock ablegen";
+"Zoom" = "Zoomen";
+"Bring All to Front" = "Alle nach vorne bringen";
+"Help" = "Hilfe";
+"QuickMD Help" = "QuickMD-Hilfe";
+
+/* Templates */
+"Blank" = "Leer";
+"Meeting Notes" = "Besprechungsnotizen";
+"To-Do List" = "To-do-Liste";
+"Daily Journal" = "Tagebuch";
+"Weekly Review" = "Wochenrückblick";
+"Project Plan" = "Projektplan";
+"README" = "README";
+"Blog Post" = "Blogbeitrag";
+"Decision Record" = "Entscheidungsprotokoll";
+
+/* Settings */
+"Settings" = "Einstellungen";
+"Text size" = "Textgröße";
+"Windows" = "Fenster";
+"New document" = "Neues Dokument";
+"Agents" = "Agenten";
+"Default app" = "Standard-App";
+"Open documents in tabs" = "Dokumente in Tabs öffnen";
+"Watch agents write live" = "Agenten live beim Schreiben zusehen";
+"Make Default for .md" = "Als Standard für .md festlegen";
+"%d pt" = "%d pt";
+
+/* Alerts and panels */
+"OK" = "OK";
+"Open" = "Öffnen";
+"Cancel" = "Abbrechen";
+"Open this link in another app?" = "Diesen Link in einer anderen App öffnen?";
+"Couldn’t make QuickMD the default" = "QuickMD konnte nicht als Standard festgelegt werden";
+"QuickMD now opens Markdown files" = "QuickMD öffnet jetzt Markdown-Dateien";
+"Finder and Quick Look will offer “Open with QuickMD” for .md files." = "Finder und Übersicht bieten für .md-Dateien „Mit QuickMD öffnen“ an.";
+"Allow Access" = "Zugriff erlauben";
+"Allow QuickMD to show the images and open the notes this note links to in “%@”." = "QuickMD erlauben, die Bilder anzuzeigen und die Notizen zu öffnen, auf die diese Notiz in „%@“ verweist.";
+"No text was selected." = "Es wurde kein Text ausgewählt.";
+"%@ words" = "%@ Wörter";
+"%@ characters" = "%@ Zeichen";
+"About %@ min to read" = "Lesedauer: ca. %@ Min.";
+"Selection: %@ words, %@ characters" = "Auswahl: %@ Wörter, %@ Zeichen";
+
+/* Help, accessibility */
+"Report an Issue…" = "Problem melden…";
+"Task" = "Aufgabe";
+"Image" = "Bild";
+"table" = "Tabelle";
+"Table, %d rows, %d columns" = "Tabelle, %d Zeilen, %d Spalten";
+
+"Start writing. Type / to insert a block." = "Schreibe los. Tippe /, um einen Block einzufügen.";
+"Default for .md" = "Standard für .md";
+"QuickMD already opens Markdown files" = "QuickMD öffnet Markdown-Dateien bereits";
+"Finder and Quick Look offer “Open with QuickMD” for .md files." = "Finder und Übersicht bieten für .md-Dateien „Mit QuickMD öffnen“ an.";
+"Untitled" = "Ohne Titel";
+"Note text" = "Notiztext";
+"Back to text" = "Zurück zum Text";
+"Copy code" = "Code kopieren";

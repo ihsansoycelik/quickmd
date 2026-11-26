@@ -21,7 +21,7 @@
     <key>NSSupportsSuddenTermination</key><true/>
     <key>ITSAppUsesNonExemptEncryption</key><false/>
     <key>NSHumanReadableCopyright</key><string>Copyright © 2026 QuickMD contributors. MIT License.</string>
-    <key>CFBundleLocalizations</key><array><string>en</string><string>tr</string></array>
+    <key>CFBundleLocalizations</key><array><string>en</string><string>tr</string><string>de</string></array>
     <key>NSServices</key>
     <array>
         <dict>
