@@ -15,7 +15,7 @@ QuickMD is a native macOS Markdown editor in Swift and AppKit, built with SwiftP
 - One view: no preview pane, sidebar or toolbar. New features fit into the editor, menus or settings.
 - Notes are untrusted input. Raw HTML is sanitised and scripts from a note never run; keep the Content-Security-Policy in `MarkdownHTML.swift` tight.
 - No network access from the app beyond what a note itself asks for (its links and https images in export and print).
-- Every user-facing string goes through `L("…")` and gets an entry in both `Resources/Localization/en.lproj` and `tr.lproj`.
+- Every user-facing string goes through `L("…")`. English text is the key; add its translation to `Resources/Localization/tr.lproj/Localizable.strings`.
 - Add or update a test in `Tests/QuickMDTests/` for each bug fix.
 - Note user-visible changes under "Unreleased" in `CHANGELOG.md`.
 - Bundled KaTeX and Mermaid in `Resources/` are third-party files; update them as a whole, with their licenses.

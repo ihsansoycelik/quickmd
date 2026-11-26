@@ -6,7 +6,7 @@
 
 - [ ] `swift test` passes
 - [ ] Tried it in the app built with `./scripts/build-app.sh`
-- [ ] New strings are in both `en.lproj` and `tr.lproj`
+- [ ] New strings go through `L("…")` and have a line in `tr.lproj`
 - [ ] User-visible change noted under "Unreleased" in `CHANGELOG.md`
 
 <!-- Screenshots or a short recording for anything visual. -->

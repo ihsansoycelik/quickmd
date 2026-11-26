@@ -24,7 +24,7 @@ swift test
 1. Branch from `main`.
 2. Keep the change focused: one fix or feature per pull request.
 3. Add or update a test in `Tests/QuickMDTests/` when you fix a bug or change editor behaviour.
-4. Put every new user-facing string through `L("…")` and add it to both `Resources/Localization/en.lproj/Localizable.strings` and `tr.lproj/Localizable.strings`. If you don't speak Turkish, copy the English text and say so in the pull request.
+4. Put every new user-facing string through `L("…")`. The English text is the key; add a line for it to `Resources/Localization/tr.lproj/Localizable.strings`. If you don't speak Turkish, use the English text as the value and say so in the pull request.
 5. Run `swift test` and try the change in the built app.
 6. Add a line under "Unreleased" in `CHANGELOG.md` if users will notice the change.
 7. Open the pull request and fill in the template. Screenshots or a short screen recording help for anything visual.
@@ -33,7 +33,7 @@ The rules the code follows are in [AGENTS.md](AGENTS.md). The most important one
 
 ## Translations
 
-The interface strings are in `Resources/Localization/<language>.lproj/`. To add a language, copy `en.lproj` to a new folder named with the language code (for example `de.lproj`), translate the right-hand side of each line, and open a pull request.
+The interface strings are in `Resources/Localization/<language>.lproj/`. English is the source language, so every key is its English text. To add a language, copy `tr.lproj` to a new folder named with the language code (for example `de.lproj`), replace the Turkish right-hand side of each line with your translation, and open a pull request.
 
 ## Using AI tools
 
