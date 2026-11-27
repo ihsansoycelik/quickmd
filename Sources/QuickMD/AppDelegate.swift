@@ -157,10 +157,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func smallerText(_ sender: Any?) { Settings.fontSize -= 1 }
     @objc func defaultTextSize(_ sender: Any?) { Settings.fontSize = Design.defaultSize }
 
+    @objc func toggleWordCount(_ sender: Any?) { Settings.showsWordCount.toggle() }
+    @objc func toggleMarkdownSyntax(_ sender: Any?) { Settings.showsSyntax.toggle() }
+    @objc func toggleFocusMode(_ sender: Any?) { Settings.focusMode.toggle() }
+    @objc func toggleTypewriterMode(_ sender: Any?) { Settings.typewriterMode.toggle() }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(chooseTheme(_:)):
             menuItem.state = Settings.themePreference.rawValue == menuItem.representedObject as? String ? .on : .off
+        case #selector(toggleWordCount(_:)): menuItem.state = Settings.showsWordCount ? .on : .off
+        case #selector(toggleMarkdownSyntax(_:)): menuItem.state = Settings.showsSyntax ? .on : .off
+        case #selector(toggleFocusMode(_:)): menuItem.state = Settings.focusMode ? .on : .off
+        case #selector(toggleTypewriterMode(_:)): menuItem.state = Settings.typewriterMode ? .on : .off
         default:
             break
         }

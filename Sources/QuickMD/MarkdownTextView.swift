@@ -8,6 +8,24 @@ final class MarkdownTextView: NSTextView {
     /// Where relative links resolve from: the document's folder.
     var baseURL: URL?
 
+    /// Markdown marks are hidden (reading mode, Show Markdown Syntax
+    /// off): the caret steps over them and Backspace takes a block's
+    /// marker in one go.
+    var concealsMarkup = false
+
+    /// Between shouldChangeText and didChangeText: the selection set
+    /// there follows the edit and is left as it is.
+    private var isEditingText = false
+    /// The key command being performed, so an arrow step can be told
+    /// from a click or a jump.
+    private var currentCommand: Selector?
+
+    override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
+        let ok = super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
+        if ok { isEditingText = true }
+        return ok
+    }
+
     // MARK: Caret
 
     /// The caret is trimmed to the font's height instead of the whole
@@ -53,6 +71,8 @@ final class MarkdownTextView: NSTextView {
     // MARK: Return and Tab
 
     override func insertNewline(_ sender: Any?) {
+        autoMarker = nil
+        autoPair = nil
         let ns = string as NSString
         let selection = selectedRange()
         guard selection.length == 0, !hasMarkedText() else { return super.insertNewline(sender) }
@@ -63,6 +83,13 @@ final class MarkdownTextView: NSTextView {
         // Code keeps its indent and nothing else: no list or quote there.
         if isInCodeBlock(line.location) {
             insertText("\n" + indent, replacementRange: selection)
+            return
+        }
+        // Return before a heading's hidden `## `: a new line above, the heading kept whole.
+        if concealsMarkup, let storage = textStorage, let prefix = Concealment.blockPrefix(lineRange: line, in: storage),
+           prefix.heading != nil, prefix.quote == nil, selection.location == prefix.contentStart {
+            replace(NSRange(location: line.location, length: 0), with: "\n")
+            setSelectedRange(NSRange(location: selection.location + 1, length: 0))
             return
         }
         // With text after the caret the item isn't empty, whatever's before it.
@@ -104,6 +131,46 @@ final class MarkdownTextView: NSTextView {
             return
         }
         insertText("\n" + indent + marker, replacementRange: selection)
+        autoMarker = (selection.location + 1, indent + marker)
+    }
+
+    /// The marker Return just put on a new line: typing another block
+    /// marker right after it replaces it instead of nesting.
+    private var autoMarker: (lineStart: Int, prefix: String)?
+
+    private static let blockMarkerPattern = try! NSRegularExpression(
+        pattern: #"^(?:[-*+] \[[ xX]\]|\[[ xX]\]|>|#{1,6}|\d{1,9}[.)]|[-*+])$"#
+    )
+
+    /// `- ` from Return, then `> ` typed: the line becomes `> `, not `- > `.
+    private func replaceFreshMarker(_ typed: String, at location: Int) -> Bool {
+        guard typed == " ", let auto = autoMarker else { return false }
+        let ns = string as NSString
+        let line = ns.lineRange(for: NSRange(location: location, length: 0))
+        guard line.location == auto.lineStart, location >= line.location else { return false }
+        let before = ns.substring(with: NSRange(location: line.location, length: location - line.location))
+        let after = ns.substring(with: NSRange(location: location, length: NSMaxRange(line) - location))
+        guard before.hasPrefix(auto.prefix), after.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        let newMarker = String(before.dropFirst(auto.prefix.count))
+        guard !newMarker.isEmpty,
+              Self.blockMarkerPattern.firstMatch(in: newMarker, range: NSRange(location: 0, length: newMarker.utf16.count)) != nil
+        else { return false }
+        let indent = String(auto.prefix.prefix(while: { $0 == " " || $0 == "\t" }))
+        let oldMarker = auto.prefix.dropFirst(indent.count)
+        let replacement: String
+        if newMarker.hasPrefix("[") {
+            // A bare box: the same item, now a task.
+            let bullet = oldMarker.replacingOccurrences(of: #"\[[ xX]\] $"#, with: "", options: .regularExpression)
+            replacement = indent + bullet + "[ ] "
+        } else if newMarker.hasPrefix(">") || newMarker.hasPrefix("#") {
+            // A quote or heading leaves the list: no indent.
+            replacement = newMarker + " "
+        } else {
+            replacement = indent + newMarker + " "
+        }
+        autoMarker = nil
+        replace(NSRange(location: line.location, length: location - line.location), with: replacement)
+        return true
     }
 
     override func insertTab(_ sender: Any?) {
@@ -131,6 +198,11 @@ final class MarkdownTextView: NSTextView {
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
         let selection = selectedRange()
+        if let typed = string as? String, replacementRange.location == NSNotFound, selection.length == 0, !hasMarkedText() {
+            if stepOverClosingMark(typed, at: selection.location) { return }
+            if replaceFreshMarker(typed, at: selection.location) { return }
+            if insertAutoPair(typed, at: selection.location) { return }
+        }
         if let typed = string as? String, let close = Self.wrapPairs[typed], replacementRange.location == NSNotFound,
            selection.length > 0, !hasMarkedText(),
            !(self.string as NSString).substring(with: selection).contains("\n") {
@@ -141,6 +213,122 @@ final class MarkdownTextView: NSTextView {
         }
         super.insertText(string, replacementRange: replacementRange)
         if string as? String == "/" { openSlashMenuIfAtWordStart() }
+    }
+
+    // MARK: Auto-pairs
+
+    /// A closing mark typed for the writer (`**`, a backtick, `~~`):
+    /// counted from the end of its line, which typing inside the pair
+    /// doesn't move.
+    private var autoPair: (lineStart: Int, fromEnd: Int, opener: String, closer: String)?
+
+    private func lineContentEnd(_ line: NSRange, _ ns: NSString) -> Int {
+        var end = NSMaxRange(line)
+        while end > line.location, "\n\r\u{2028}\u{2029}".utf16.contains(ns.character(at: end - 1)) { end -= 1 }
+        return end
+    }
+
+    /// Where the pending closing mark is, if it is still there.
+    private func autoPairCloser(at location: Int) -> Int? {
+        guard let pair = autoPair else { return nil }
+        let ns = string as NSString
+        let line = ns.lineRange(for: NSRange(location: min(location, ns.length), length: 0))
+        let closer = lineContentEnd(line, ns) - pair.fromEnd
+        guard line.location == pair.lineStart, closer >= line.location,
+              closer + pair.closer.utf16.count <= ns.length,
+              ns.substring(with: NSRange(location: closer, length: pair.closer.utf16.count)) == pair.closer else {
+            autoPair = nil
+            return nil
+        }
+        return closer
+    }
+
+    /// The rest of a closing mark stepped over in one go: typing it
+    /// next is swallowed, so `**` typed in full still lands after it.
+    private var swallow: (location: Int, text: String)?
+
+    private func stepOverClosingMark(_ typed: String, at location: Int) -> Bool {
+        if let pending = swallow {
+            swallow = nil
+            if pending.location == location, pending.text.hasPrefix(typed) {
+                let rest = String(pending.text.dropFirst(typed.count))
+                if !rest.isEmpty { swallow = (location, rest) }
+                return true
+            }
+        }
+        guard let pair = autoPair, pair.closer.hasPrefix(typed), autoPairCloser(at: location) == location else { return false }
+        // The whole closer at once: with marks hidden, a caret between
+        // its two `*` would look the same and step out anyway.
+        autoPair = nil
+        let end = location + pair.closer.utf16.count
+        let rest = String(pair.closer.dropFirst(typed.count))
+        if !rest.isEmpty { swallow = (end, rest) }
+        setSelectedRange(NSRange(location: end, length: 0))
+        return true
+    }
+
+    /// `**`, `` ` `` or `~~` typed before a space or the line's end, after
+    /// a space or the line's start: the closing half goes in too.
+    private func insertAutoPair(_ typed: String, at location: Int) -> Bool {
+        guard typed == "*" || typed == "`" || typed == "~", !isInCodeBlock(location) else { return false }
+        let ns = string as NSString
+        let line = ns.lineRange(for: NSRange(location: location, length: 0))
+        let end = lineContentEnd(line, ns)
+        func isSpaceOrEdge(_ i: Int) -> Bool {
+            guard i >= line.location, i < end else { return true }
+            return ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09
+        }
+        guard isSpaceOrEdge(location) else { return false }
+        // An odd number of backticks before: inside inline code.
+        let before = ns.substring(with: NSRange(location: line.location, length: location - line.location))
+        guard before.filter({ $0 == "`" }).count % 2 == 0 else { return false }
+        let opener: String
+        if typed == "`" {
+            guard isSpaceOrEdge(location - 1) else { return false }
+            opener = "`"
+        } else {
+            guard location - 1 >= line.location, ns.character(at: location - 1) == typed.utf16.first,
+                  isSpaceOrEdge(location - 2) else { return false }
+            opener = typed + typed
+        }
+        let closer = opener
+        super.insertText(typed + closer, replacementRange: NSRange(location: location, length: 0))
+        setSelectedRange(NSRange(location: location + typed.utf16.count, length: 0))
+        let newLine = (self.string as NSString).lineRange(for: NSRange(location: location, length: 0))
+        let closerAt = location + typed.utf16.count
+        autoPair = (newLine.location, lineContentEnd(newLine, self.string as NSString) - closerAt, opener, closer)
+        return true
+    }
+
+    // MARK: Backspace
+
+    override func deleteBackward(_ sender: Any?) {
+        let selection = selectedRange()
+        if selection.length == 0, !hasMarkedText(), let storage = textStorage {
+            // Right after an auto-paired opener, with nothing typed in it: both go.
+            if let pair = autoPair, pair.closer == pair.opener, autoPairCloser(at: selection.location) == selection.location {
+                let length = pair.opener.utf16.count
+                let ns = string as NSString
+                if selection.location >= length,
+                   ns.substring(with: NSRange(location: selection.location - length, length: length)) == pair.opener {
+                    autoPair = nil
+                    replace(NSRange(location: selection.location - length, length: 2 * length), with: "")
+                    return
+                }
+            }
+            // At a block's content start: its whole marker goes, the
+            // innermost first (a heading or list item becomes a paragraph).
+            if concealsMarkup {
+                let line = (string as NSString).lineRange(for: NSRange(location: selection.location, length: 0))
+                if let prefix = Concealment.blockPrefix(lineRange: line, in: storage), selection.location == prefix.contentStart,
+                   let marker = prefix.heading ?? prefix.list ?? prefix.quote {
+                    autoMarker = nil
+                    replace(marker, with: "")
+                    return
+                }
+            }
+        }
+        super.deleteBackward(sender)
     }
 
     // MARK: Slash menu
@@ -159,15 +347,86 @@ final class MarkdownTextView: NSTextView {
 
     override func doCommand(by selector: Selector) {
         if slashMenu.handle(selector) { return }
+        currentCommand = selector
+        defer { currentCommand = nil }
         super.doCommand(by: selector)
     }
 
     override func didChangeText() {
+        isEditingText = false
         super.didChangeText()
         slashMenu.update()
     }
 
+    // MARK: Arrows over hidden marks
+
+    /// AppKit's own ← and → stall or jump at a hidden glyph, so with
+    /// marks hidden the caret moves one visible character itself.
+    override func moveRight(_ sender: Any?) { if !stepCaret(forward: true) { super.moveRight(sender) } }
+    override func moveLeft(_ sender: Any?) { if !stepCaret(forward: false) { super.moveLeft(sender) } }
+    override func moveForward(_ sender: Any?) { if !stepCaret(forward: true) { super.moveForward(sender) } }
+    override func moveBackward(_ sender: Any?) { if !stepCaret(forward: false) { super.moveBackward(sender) } }
+
+    override func moveRightAndModifySelection(_ sender: Any?) {
+        if !extendSelection(forward: true) { super.moveRightAndModifySelection(sender) }
+    }
+    override func moveLeftAndModifySelection(_ sender: Any?) {
+        if !extendSelection(forward: false) { super.moveLeftAndModifySelection(sender) }
+    }
+
+    /// The fixed end of a selection grown with ⇧← and ⇧→.
+    private var extendAnchor: Int?
+
+    private func extendSelection(forward: Bool) -> Bool {
+        let selection = selectedRange()
+        guard concealsMarkup, !hasMarkedText(), let storage = textStorage else { return false }
+        let anchor: Int
+        if selection.length == 0 {
+            anchor = selection.location
+        } else if let known = extendAnchor, known == selection.location || known == NSMaxRange(selection) {
+            anchor = known
+        } else {
+            anchor = forward ? selection.location : NSMaxRange(selection)
+        }
+        let head = anchor == selection.location ? NSMaxRange(selection) : selection.location
+        guard var moved = Concealment.step(from: head, forward: forward, in: storage) else { return false }
+        // Only hidden marks left between the ends: nothing is selected.
+        let between = NSRange(location: min(anchor, moved), length: abs(moved - anchor))
+        if between.length > 0, (between.location..<NSMaxRange(between)).allSatisfy({
+            storage.attribute(.qmConceal, at: $0, effectiveRange: nil) != nil
+        }) { moved = anchor }
+        extendAnchor = anchor
+        setSelectedRange(NSRange(location: min(anchor, moved), length: abs(moved - anchor)))
+        scrollRangeToVisible(NSRange(location: moved, length: 0))
+        return true
+    }
+
+    private func stepCaret(forward: Bool) -> Bool {
+        let selection = selectedRange()
+        guard concealsMarkup, selection.length == 0, !hasMarkedText(), let storage = textStorage else { return false }
+        guard let target = Concealment.step(from: selection.location, forward: forward, in: storage) else { return false }
+        setSelectedRange(NSRange(location: target, length: 0))
+        scrollRangeToVisible(selectedRange())
+        return true
+    }
+
+    private static let stepCommands: Set<Selector> = [
+        #selector(NSResponder.moveLeft(_:)), #selector(NSResponder.moveRight(_:)),
+        #selector(NSResponder.moveForward(_:)), #selector(NSResponder.moveBackward(_:)),
+    ]
+
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        var ranges = ranges
+        // A caret never rests inside hidden marks: it goes to their edge,
+        // or past them when an arrow key moved it.
+        if concealsMarkup, !isEditingText, !stillSelecting, !hasMarkedText(), ranges.count == 1,
+           let storage = textStorage, ranges[0].rangeValue.length == 0 {
+            let target = ranges[0].rangeValue.location
+            let old = selectedRange()
+            let step = currentCommand.map(Self.stepCommands.contains) ?? false
+            let snapped = Concealment.snap(target, from: old.length == 0 ? old.location : nil, step: step, in: storage)
+            if snapped != target { ranges = [NSValue(range: NSRange(location: snapped, length: 0))] }
+        }
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
         slashMenu.update()
     }
@@ -380,6 +639,62 @@ final class MarkdownTextView: NSTextView {
 
     @objc func insertDiagram(_ sender: Any?) {
         insertBlock("```mermaid\ngraph LR\n  A[Draft] --> B[Review] --> C[Publish]\n```\n", select: "A[Draft] --> B[Review] --> C[Publish]")
+    }
+
+    /// Today as `yyyy-MM-dd`, over the selection.
+    @objc func insertTodaysDate(_ sender: Any?) {
+        replace(selectedRange(), with: Self.isoDay.string(from: Date()))
+    }
+
+    private static let isoDay: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    /// The next free footnote number: one past the highest `[^n]`.
+    static func nextFootnote(in text: String) -> Int {
+        let numbers = text.matches(of: /\[\^(\d{1,6})\]/).compactMap { Int($0.1) }
+        return (numbers.max() ?? 0) + 1
+    }
+
+    /// `[^n]` at the caret, its `[^n]: ` definition at the end of the
+    /// note, and the caret there to write it.
+    @objc func insertFootnote(_ sender: Any?) {
+        let n = Self.nextFootnote(in: string)
+        let selection = selectedRange()
+        replace(NSRange(location: NSMaxRange(selection), length: 0), with: "[^\(n)]")
+        let ns = string as NSString
+        var tail = ns.length == 0 || ns.hasSuffix("\n") ? "" : "\n"
+        // A blank line before the first definition; later ones stack.
+        let lastLine = ns.substring(with: ns.lineRange(for: NSRange(location: max(0, ns.length - 1), length: 0)))
+        if !lastLine.hasPrefix("[^") { tail += "\n" }
+        replace(NSRange(location: ns.length, length: 0), with: tail + "[^\(n)]: ")
+        scrollRangeToVisible(selectedRange())
+    }
+
+    /// Format › Clear Formatting: the selected lines lose their block
+    /// marker and inline marks, links keep their text.
+    @objc func clearFormatting(_ sender: Any?) {
+        transformLines(Self.plainLine)
+    }
+
+    static func plainLine(_ line: String) -> String {
+        var s = line.replacingOccurrences(
+            of: #"^[ \t]*(?:>[ \t]?)*[ \t]*(?:#{1,6}[ \t]+|(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\](?:[ \t]+|$))?)?"#,
+            with: "", options: .regularExpression)
+        let inline: [(String, String)] = [
+            (#"!?\[([^\]]*)\]\([^)\s]*\)"#, "$1"),
+            (#"\*\*([^*]+)\*\*"#, "$1"), (#"__([^_]+)__"#, "$1"),
+            (#"\*([^*]+)\*"#, "$1"), (#"(?<!\w)_([^_]+)_(?!\w)"#, "$1"),
+            (#"~~([^~]+)~~"#, "$1"), (#"==([^=]+)=="#, "$1"), (#"`([^`]+)`"#, "$1"),
+        ]
+        for (pattern, template) in inline {
+            s = s.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
+        }
+        return s
     }
 
     @objc func indentLines(_ sender: Any?) { shiftLines(right: true) }

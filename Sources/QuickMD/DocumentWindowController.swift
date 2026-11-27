@@ -48,6 +48,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             center.addObserver(forName: NSView.boundsDidChangeNotification, object: editor.textView.enclosingScrollView?.contentView, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.schedulePositionSave() }
             },
+            center.addObserver(forName: NSTextView.didChangeSelectionNotification, object: editor.textView, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.scheduleCountUpdate() }
+            },
+            center.addObserver(forName: NSText.didChangeNotification, object: editor.textView, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.scheduleCountUpdate() }
+            },
         ]
 
         document.editor = editor
@@ -64,6 +70,48 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             }
         }
         applyTheme()
+        updateCount()
+    }
+
+    // MARK: Word count
+
+    private var countUpdate: Timer?
+
+    /// Counting a long note on every key would slow typing: at most a few times a second.
+    private func scheduleCountUpdate() {
+        guard Settings.showsWordCount, countUpdate == nil else { return }
+        countUpdate = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.countUpdate = nil
+                self?.updateCount()
+            }
+        }
+    }
+
+    /// View › Show Word Count: words and reading time as the window's
+    /// subtitle, for the selection when there is one.
+    private func updateCount() {
+        guard let window else { return }
+        guard Settings.showsWordCount else {
+            if !window.subtitle.isEmpty { window.subtitle = "" }
+            return
+        }
+        let text = editor.currentText
+        let selection = editor.textView.selectedRange()
+        // A selection with no words (a hidden marker, a space) counts the whole note.
+        var words = Self.wordCount(text)
+        if selection.length > 0, NSMaxRange(selection) <= (text as NSString).length {
+            let selected = Self.wordCount((text as NSString).substring(with: selection))
+            if selected > 0 { words = selected }
+        }
+        let subtitle = Self.countLine(words: words)
+        if window.subtitle != subtitle { window.subtitle = subtitle }
+    }
+
+    /// "106 words · 1 min read"; reading at 230 words a minute.
+    static func countLine(words: Int) -> String {
+        let minutes = words == 0 ? 0 : max(1, Int((Double(words) / 230).rounded(.up)))
+        return String(format: L("%@ words · %@ min read"), number(words), number(minutes))
     }
 
     func windowWillClose(_ notification: Notification) { savePosition() }
@@ -113,6 +161,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         // Settings › Open documents in tabs should reach windows that
         // are already open, not just the next one.
         window?.tabbingMode = Settings.opensInTabs ? .preferred : .disallowed
+        updateCount()
     }
 
     // MARK: Export
@@ -200,13 +249,19 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         alert.beginSheetModal(for: window)
     }
 
+    static func wordCount(_ text: String) -> Int {
+        var words = 0
+        text.enumerateSubstrings(in: text.startIndex..., options: [.byWords, .substringNotRequired]) { _, _, _, _ in words += 1 }
+        return words
+    }
+
     static func counts(_ text: String) -> (words: Int, characters: Int) {
         var words = 0
         text.enumerateSubstrings(in: text.startIndex..., options: [.byWords, .substringNotRequired]) { _, _, _, _ in words += 1 }
         return (words, text.filter { !$0.isNewline }.count)
     }
 
-    private static func number(_ n: Int) -> String { NumberFormatter.localizedString(from: n as NSNumber, number: .decimal) }
+    static func number(_ n: Int) -> String { NumberFormatter.localizedString(from: n as NSNumber, number: .decimal) }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {

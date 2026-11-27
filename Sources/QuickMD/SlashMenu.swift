@@ -52,6 +52,10 @@ struct SlashCommand {
                          action: #selector(MarkdownTextView.insertDiagram(_:))),
             SlashCommand(title: L("Horizontal Rule"), symbol: "minus", keywords: ["horizontal rule", "divider", "hr", "line", "separator"],
                          action: #selector(MarkdownTextView.insertHorizontalRule(_:))),
+            SlashCommand(title: L("Footnote"), symbol: "textformat.superscript", keywords: ["footnote", "note", "reference"],
+                         action: #selector(MarkdownTextView.insertFootnote(_:))),
+            SlashCommand(title: L("Today’s Date"), symbol: "calendar", keywords: ["today", "date", "now"],
+                         action: #selector(MarkdownTextView.insertTodaysDate(_:))),
         ]
         return commands
     }()

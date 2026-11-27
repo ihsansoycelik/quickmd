@@ -99,6 +99,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     override func viewDidLayout() {
         super.viewDidLayout()
         updateColumn()
+        updateTypewriterInsets()
     }
 
     // MARK: Text
@@ -280,9 +281,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         if r.length > 0 { layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: r) }
     }
 
-    /// Reading mode (the default): tokens hidden, except on the line
-    /// the caret is in, so they can still be edited. Writing mode:
-    /// tokens always shown. Both are editable.
+    /// Reading mode (the default): tokens hidden. Block prefixes and the
+    /// marks of complete inline spans stay hidden on the caret line too,
+    /// so a line looks the same with the caret on it; other tokens
+    /// (fences, `$$`, a table's source) show on the caret line so they
+    /// can be edited. Writing mode (View › Show Markdown Syntax):
+    /// tokens always shown, dimmed. Both are editable.
     var isReading = true {
         didSet {
             guard isReading != oldValue else { return }
@@ -291,6 +295,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     }
 
     func applyMode() {
+        textView.concealsMarkup = isReading
         guard let layoutManager = textView.layoutManager else { return }
         let all = NSRange(location: 0, length: (textView.string as NSString).length)
         refresh(all, layoutManager)
@@ -403,8 +408,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             baselineOffset.pointee = 0
             return true
         }
-        guard at < storage.length, !NSLocationInRange(at, activeLine) else { return false }
-        if storage.attribute(.qmTableDelimiter, at: at, effectiveRange: nil) != nil {
+        guard at < storage.length else { return false }
+        if !NSLocationInRange(at, activeLine), storage.attribute(.qmTableDelimiter, at: at, effectiveRange: nil) != nil {
             lineFragmentRect.pointee.size.height = 1
             lineFragmentUsedRect.pointee.size.height = 1
             baselineOffset.pointee = 0
@@ -416,7 +421,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let ns = storage.string as NSString
         let start = ns.lineRange(for: NSRange(location: at, length: 0)).location
         guard start < at,
-              (start..<at).allSatisfy({ storage.attribute(.qmSyntax, at: $0, effectiveRange: nil) != nil }),
+              (start..<at).allSatisfy({ isHidden($0, storage) }),
               let before = (storage.attribute(.paragraphStyle, at: at, effectiveRange: nil) as? NSParagraphStyle)?
                 .paragraphSpacingBefore, before > 0 else { return false }
         lineFragmentRect.pointee.size.height += before
@@ -457,15 +462,17 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
                 }
                 notTable = at
             }
-            if !NSLocationInRange(at, activeLine), storage.attribute(.qmTaskBullet, at: at, effectiveRange: nil) != nil {
+            // A task's `- ` folds away and a bullet stays a bullet on the
+            // caret line too: the line doesn't change under the caret.
+            if storage.attribute(.qmTaskBullet, at: at, effectiveRange: nil) != nil {
                 out[i] = .controlCharacter
                 changed = true
                 continue
             }
-            if !NSLocationInRange(at, activeLine), storage.attribute(.qmSyntax, at: at, effectiveRange: nil) != nil {
+            if isHidden(at, storage) {
                 out[i] = .null
                 changed = true
-            } else if hasBullet, !NSLocationInRange(at, activeLine), storage.attribute(.qmKeepSyntax, at: at, effectiveRange: nil) != nil,
+            } else if hasBullet, storage.attribute(.qmKeepSyntax, at: at, effectiveRange: nil) != nil,
                       let c = (storage.string as NSString).substring(with: NSRange(location: at, length: 1)).utf16.first,
                       c == 0x2D || c == 0x2A || c == 0x2B {
                 glyphOut[i] = bulletGlyph
@@ -477,6 +484,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             layoutManager.setGlyphs($0.baseAddress!, properties: props.baseAddress!, characterIndexes: charIndexes, font: aFont, forGlyphRange: glyphRange)
         } }
         return glyphRange.length
+    }
+
+    /// A token drawn as nothing: concealed marks always, other tokens
+    /// off the caret line.
+    private func isHidden(_ at: Int, _ storage: NSTextStorage) -> Bool {
+        guard storage.attribute(.qmSyntax, at: at, effectiveRange: nil) != nil else { return false }
+        return !NSLocationInRange(at, activeLine) || storage.attribute(.qmConceal, at: at, effectiveRange: nil) != nil
     }
 
     func layoutManager(
@@ -614,10 +628,107 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             pendingEdit = nil
             restyle(edited: edited)
         }
+        focusedBlock = nil
+        updateFocus()
+        centerCaret()
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
         updateActiveLine()
+        updateFocus()
+        centerCaret()
+    }
+
+    // MARK: Focus and Typewriter
+
+    /// The block Focus keeps bright, or nil when nothing is dimmed.
+    private var focusedBlock: NSRange?
+
+    /// The lines around `location` up to a blank line either side.
+    static func focusBlock(in ns: NSString, at location: Int) -> NSRange {
+        guard ns.length > 0 else { return NSRange(location: 0, length: 0) }
+        func isBlank(_ line: NSRange) -> Bool {
+            ns.substring(with: line).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let here = ns.lineRange(for: NSRange(location: min(location, ns.length), length: 0))
+        guard !isBlank(here) else { return here }
+        var start = here.location, end = NSMaxRange(here)
+        while start > 0 {
+            let previous = ns.lineRange(for: NSRange(location: start - 1, length: 0))
+            if isBlank(previous) { break }
+            start = previous.location
+        }
+        while end < ns.length {
+            let next = ns.lineRange(for: NSRange(location: end, length: 0))
+            if isBlank(next) { break }
+            end = NSMaxRange(next)
+        }
+        return NSRange(location: start, length: end - start)
+    }
+
+    /// Focus: dims, at drawing time, every block but the caret's. The
+    /// text's own attributes are left alone.
+    private func updateFocus() {
+        guard let layoutManager = textView.layoutManager else { return }
+        let ns = textView.string as NSString
+        let all = NSRange(location: 0, length: ns.length)
+        guard Settings.focusMode, ns.length > 0, playback == nil else {
+            if focusedBlock != nil {
+                focusedBlock = nil
+                layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: all)
+            }
+            return
+        }
+        let block = Self.focusBlock(in: ns, at: textView.selectedRange().location)
+        guard block != focusedBlock else { return }
+        focusedBlock = block
+        layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: all)
+        let dim = Palette.for(Settings.theme).text.withAlphaComponent(0.28)
+        if block.location > 0 {
+            layoutManager.addTemporaryAttribute(.foregroundColor, value: dim, forCharacterRange: NSRange(location: 0, length: block.location))
+        }
+        if NSMaxRange(block) < ns.length {
+            layoutManager.addTemporaryAttribute(.foregroundColor, value: dim,
+                                                forCharacterRange: NSRange(location: NSMaxRange(block), length: ns.length - NSMaxRange(block)))
+        }
+    }
+
+    /// Typewriter: room above and below, so the first and last lines
+    /// can sit in the middle of the window too.
+    private func updateTypewriterInsets() {
+        let half = Settings.typewriterMode ? (scrollView.frame.height / 2).rounded(.down) : 0
+        let insets = NSEdgeInsets(top: half, left: 0, bottom: half, right: 0)
+        let current = scrollView.contentInsets
+        guard current.top != insets.top || current.bottom != insets.bottom else { return }
+        scrollView.contentInsets = insets
+        centerCaret()
+    }
+
+    /// Typewriter: scrolls so the caret's line is in the vertical middle.
+    private func centerCaret() {
+        guard Settings.typewriterMode, playback == nil, textView.selectedRange().length == 0,
+              let layoutManager = textView.layoutManager, let container = textView.textContainer else { return }
+        let length = (textView.string as NSString).length
+        let caret = min(textView.selectedRange().location, length)
+        var rect: NSRect
+        if caret >= length, layoutManager.extraLineFragmentTextContainer != nil {
+            layoutManager.ensureLayout(for: container)
+            rect = layoutManager.extraLineFragmentRect
+        } else if length > 0 {
+            let glyph = layoutManager.glyphIndexForCharacter(at: min(caret, length - 1))
+            layoutManager.ensureLayout(forGlyphRange: NSRange(location: glyph, length: 1))
+            rect = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        } else {
+            return
+        }
+        let clip = scrollView.contentView
+        let visible = scrollView.frame.height
+        var origin = clip.bounds.origin
+        origin.y = rect.midY + textView.textContainerOrigin.y - visible / 2
+        let target = clip.constrainBoundsRect(NSRect(origin: origin, size: clip.bounds.size)).origin
+        guard abs(target.y - clip.bounds.origin.y) > 0.5 else { return }
+        clip.scroll(to: target)
+        scrollView.reflectScrolledClipView(clip)
     }
 
     /// Line breaks stay `\n` in the editor (the document converts on
@@ -650,6 +761,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     // MARK: Appearance
 
     private func applySettings() {
+        if appliedShowsSyntax != Settings.showsSyntax {
+            appliedShowsSyntax = Settings.showsSyntax
+            isReading = !Settings.showsSyntax
+        }
+        textView.concealsMarkup = isReading
+        focusedBlock = nil
+        updateFocus()
+        updateTypewriterInsets()
         let theme = Settings.theme
         let palette = Palette.for(theme)
         let font = MarkdownStyler.bodyFont(size: Settings.fontSize)
@@ -689,6 +808,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         updateColumn()
         textView.needsDisplay = true
     }
+
+    /// Show Markdown Syntax as last applied: only a change flips the mode.
+    private var appliedShowsSyntax: Bool?
 
     /// Size and theme, the only settings that change the text's attributes.
     private var appliedStyle: (size: CGFloat, theme: Theme)?

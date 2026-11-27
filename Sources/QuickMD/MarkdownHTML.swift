@@ -753,7 +753,12 @@ enum MarkdownHTML {
             var file = parts[0]
             let label = m[3].isEmpty ? target.replacingOccurrences(of: "#", with: " › ") : m[3]
             if !file.isEmpty, (file as NSString).pathExtension.isEmpty { file += ".md" }
-            let path = file.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file
+            var path = file.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file
+            // A name with a colon in its first part (`javascript:…`) stays
+            // a relative path whichever way Foundation escapes the colon.
+            if let first = file.split(separator: "/", omittingEmptySubsequences: false).first, first.contains(":") {
+                path = "./" + path
+            }
             let fragment = parts.count > 1 ? "#" + slug(parts[1...].joined(separator: "#")) : ""
             if m[1] == "!" {
                 let ext = (file as NSString).pathExtension.lowercased()

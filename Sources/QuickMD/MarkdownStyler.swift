@@ -17,6 +17,10 @@ extension NSAttributedString.Key {
     static let qmTaskBullet = NSAttributedString.Key("qmTaskBullet")
     /// A dimmed marker that reading mode still shows (a list bullet).
     static let qmKeepSyntax = NSAttributedString.Key("qmKeepSyntax")
+    /// A hidden token that stays hidden on the caret line too: block
+    /// prefixes (`## `, `> `) and the marks of complete inline spans
+    /// (`**`, backticks, `](url)`). Always together with `.qmSyntax`.
+    static let qmConceal = NSAttributedString.Key("qmConceal")
 }
 
 /// The styling pass behind the editor: headings, emphasis, code, rules,
@@ -192,6 +196,14 @@ enum MarkdownStyler {
                   storage.attribute(.qmKeepSyntax, at: run.location, effectiveRange: nil) == nil else { return }
             storage.addAttribute(.qmSyntax, value: true, range: run)
         }
+        // A later pass may have recoloured a mark (a ticked task dims its
+        // line): only what is still a token stays concealed.
+        storage.enumerateAttribute(.qmConceal, in: range) { value, run, _ in
+            guard value != nil else { return }
+            storage.enumerateAttribute(.qmSyntax, in: run) { syntax, part, _ in
+                if syntax == nil { storage.removeAttribute(.qmConceal, range: part) }
+            }
+        }
     }
 
     /// Grows `dirty` over whole quote and table blocks touching it, and
@@ -347,7 +359,7 @@ enum MarkdownStyler {
                 ], range: content)
                 // The space after the hashes too, so reading mode hides it
                 // and the heading lines up with the text below.
-                storage.addAttribute(.foregroundColor, value: style.syntax, range: marker)
+                storage.addAttributes([.foregroundColor: style.syntax, .qmConceal: true], range: marker)
                 continue
             }
 
@@ -388,7 +400,7 @@ enum MarkdownStyler {
                         .paragraphStyle: style.quoteParagraph,
                         .qmQuote: true,
                     ], range: content)
-                    storage.addAttribute(.foregroundColor, value: style.syntax, range: match.range(at: 1))
+                    storage.addAttributes([.foregroundColor: style.syntax, .qmConceal: true], range: match.range(at: 1))
                 }
                 continue
             }
@@ -482,7 +494,7 @@ enum MarkdownStyler {
         while next < ns.length, ns.character(at: next) == 0x20 { next += 1 }
         let isLast = next >= ns.length || ns.character(at: next) != 0x3E  // >
         storage.addAttributes([.qmCallout: color, .paragraphStyle: isLast ? style.calloutLastParagraph : style.calloutParagraph], range: lineRange)
-        storage.addAttribute(.foregroundColor, value: style.syntax, range: marker)
+        storage.addAttributes([.foregroundColor: style.syntax, .qmConceal: true], range: marker)
         if let title = calloutPattern.firstMatch(in: text, range: content) {
             let word = title.range(at: 1)
             storage.addAttribute(.foregroundColor, value: style.syntax, range: NSRange(location: content.location, length: NSMaxRange(title.range) - content.location))
@@ -608,6 +620,13 @@ enum MarkdownStyler {
                 range: NSRange(location: location, length: length)
             )
         }
+        /// Dimmed and hidden even on the caret line: a complete span's mark.
+        func conceal(_ location: Int, _ length: Int) {
+            storage.addAttributes(
+                [.foregroundColor: style.syntax, .qmConceal: true],
+                range: NSRange(location: location, length: length)
+            )
+        }
 
         // Code first: inside a span everything is literal, so the other
         // passes skip anything that starts or ends in one.
@@ -616,8 +635,8 @@ enum MarkdownStyler {
             storage.addAttributes([
                 .font: style.inlineMono, .backgroundColor: style.codeBackground, .foregroundColor: style.palette.strong,
             ], range: r)
-            dim(r.location, 1)
-            dim(NSMaxRange(r) - 1, 1)
+            conceal(r.location, 1)
+            conceal(NSMaxRange(r) - 1, 1)
         }
         func isCode(_ r: NSRange) -> Bool {
             inCodeBlock(r)
@@ -642,8 +661,8 @@ enum MarkdownStyler {
             guard let r = match?.range, !isCode(r) else { return }
             let current = storage.attribute(.font, at: r.location, effectiveRange: nil) as? NSFont
             storage.addAttribute(.font, value: style.adding(.bold, to: current), range: r)
-            dim(r.location, 2)
-            dim(NSMaxRange(r) - 2, 2)
+            conceal(r.location, 2)
+            conceal(NSMaxRange(r) - 2, 2)
         }
         italicPattern.enumerateMatches(in: text, range: range) { match, _, _ in
             guard let r = match?.range, !isCode(r) else { return }
@@ -652,8 +671,8 @@ enum MarkdownStyler {
             if NSMaxRange(r) < ns.length, ns.character(at: NSMaxRange(r)) == 0x2A { return }
             let current = storage.attribute(.font, at: r.location, effectiveRange: nil) as? NSFont
             storage.addAttribute(.font, value: style.adding(.italic, to: current), range: r)
-            dim(r.location, 1)
-            dim(NSMaxRange(r) - 1, 1)
+            conceal(r.location, 1)
+            conceal(NSMaxRange(r) - 1, 1)
         }
         strikePattern.enumerateMatches(in: text, range: range) { match, _, _ in
             guard let r = match?.range, !isCode(r) else { return }
@@ -661,21 +680,24 @@ enum MarkdownStyler {
                 .strikethroughStyle: NSUnderlineStyle.single.rawValue,
                 .strikethroughColor: style.syntax,
             ], range: NSRange(location: r.location + 2, length: r.length - 4))
-            dim(r.location, 2)
-            dim(NSMaxRange(r) - 2, 2)
+            conceal(r.location, 2)
+            conceal(NSMaxRange(r) - 2, 2)
         }
         markPattern.enumerateMatches(in: text, range: range) { match, _, _ in
             guard let r = match?.range, !isCode(r) else { return }
             storage.addAttribute(.backgroundColor, value: style.highlight,
                                  range: NSRange(location: r.location + 2, length: r.length - 4))
-            dim(r.location, 2)
-            dim(NSMaxRange(r) - 2, 2)
+            conceal(r.location, 2)
+            conceal(NSMaxRange(r) - 2, 2)
         }
         mdLinkPattern.enumerateMatches(in: text, range: range) { match, _, _ in
             guard let match, !isCode(match.range) else { return }
             let r = match.range, label = match.range(at: 1), target = match.range(at: 2)
-            dim(r.location, label.location - r.location)
-            dim(NSMaxRange(label), NSMaxRange(r) - NSMaxRange(label))
+            // An image keeps its source on the caret line: its picture
+            // is drawn only off it.
+            let mark = ns.character(at: r.location) == 0x21 ? dim : conceal
+            mark(r.location, label.location - r.location)
+            mark(NSMaxRange(label), NSMaxRange(r) - NSMaxRange(label))
             guard let url = linkURL(ns.substring(with: target)) else { return }
             storage.addAttributes(linkAttributes(url, style), range: label)
         }
@@ -698,8 +720,8 @@ enum MarkdownStyler {
                                       range: NSRange(location: r.location, length: r.length + 1))
                 return
             }
-            dim(r.location, 2)
-            dim(NSMaxRange(r) - 1, 1)
+            conceal(r.location, 2)
+            conceal(NSMaxRange(r) - 1, 1)
             let font = storage.attribute(.font, at: label.location, effectiveRange: nil) as? NSFont ?? style.base
             storage.addAttributes([
                 .font: NSFont(descriptor: font.fontDescriptor, size: (font.pointSize * 0.72).rounded()) ?? font,

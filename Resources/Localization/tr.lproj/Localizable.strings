@@ -172,3 +172,13 @@
 "Note text" = "Not metni";
 "Back to text" = "Metne dön";
 "Copy code" = "Kodu kopyala";
+
+/* Lede-style writing */
+"%@ words · %@ min read" = "%@ kelime · %@ dk okuma";
+"Show Word Count" = "Kelime Sayısını Göster";
+"Show Markdown Syntax" = "Markdown İşaretlerini Göster";
+"Focus" = "Odak";
+"Typewriter" = "Daktilo";
+"Clear Formatting" = "Biçimi Temizle";
+"Footnote" = "Dipnot";
+"Today’s Date" = "Bugünün Tarihi";

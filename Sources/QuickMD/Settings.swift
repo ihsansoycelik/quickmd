@@ -52,6 +52,31 @@ enum Settings {
         set { defaults.set(newValue, forKey: "LiveWriting"); changed() }
     }
 
+    /// View › Show Markdown Syntax: every mark shown, dimmed, everywhere.
+    /// Off (the default), marks are hidden and the text reads styled.
+    static var showsSyntax: Bool {
+        get { defaults.bool(forKey: "ShowMarkdownSyntax") }
+        set { defaults.set(newValue, forKey: "ShowMarkdownSyntax"); changed() }
+    }
+
+    /// View › Show Word Count: words and reading time in the window's subtitle.
+    static var showsWordCount: Bool {
+        get { defaults.object(forKey: "ShowWordCount") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "ShowWordCount"); changed() }
+    }
+
+    /// View › Focus: every paragraph but the caret's is dimmed.
+    static var focusMode: Bool {
+        get { defaults.bool(forKey: "FocusMode") }
+        set { defaults.set(newValue, forKey: "FocusMode"); changed() }
+    }
+
+    /// View › Typewriter: the caret's line stays in the middle of the window.
+    static var typewriterMode: Bool {
+        get { defaults.bool(forKey: "TypewriterMode") }
+        set { defaults.set(newValue, forKey: "TypewriterMode"); changed() }
+    }
+
     /// What File › New starts with.
     static var newDocumentStarter: Starter {
         get { Starter(rawValue: defaults.string(forKey: "NewDocumentStarter") ?? "") ?? .blank }
