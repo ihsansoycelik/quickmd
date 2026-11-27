@@ -30,6 +30,8 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
     /// Grounds drawn as rounded chips that hug the text (inline code,
     /// `==marks==`) instead of filling the whole tall line.
     var chipColors: [NSColor] = []
+    /// Folded sections: drawn as nothing, a `…` after their heading.
+    weak var folding: FoldController?
 
     override func fillBackgroundRectArray(_ rectArray: UnsafePointer<NSRect>, count rectCount: Int,
                                           forCharacterRange charRange: NSRange, color: NSColor) {
@@ -139,6 +141,9 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
     /// rule above. An attribute-only `.backgroundColor` would stop at
     /// the end of each line and leave a ragged right edge.
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        if let parts = MainActor.assumeIsolated({ folding?.visibleParts(of: glyphsToShow, in: self) }) {
+            return parts.forEach { drawBackground(forGlyphRange: $0, at: origin) }
+        }
         if let storage = textStorage, let context = NSGraphicsContext.current?.cgContext {
             let charRange = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
             let full = NSRange(location: 0, length: storage.length)
@@ -315,7 +320,11 @@ final class HorizontalRuleLayoutManager: NSLayoutManager {
     }
 
     override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        if let parts = MainActor.assumeIsolated({ folding?.visibleParts(of: glyphsToShow, in: self) }) {
+            return parts.forEach { drawGlyphs(forGlyphRange: $0, at: origin) }
+        }
         super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+        MainActor.assumeIsolated { folding?.drawMarkers(forGlyphRange: glyphsToShow, at: origin, in: self) }
         drawCheckboxes(in: characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil), at: origin)
 
         guard let textStorage = textStorage,

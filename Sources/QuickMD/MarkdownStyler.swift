@@ -44,13 +44,13 @@ enum MarkdownStyler {
     private static var cachedStyle: (key: StyleKey, style: Style)?
 
     private struct StyleKey: Equatable {
-        let size: CGFloat, theme: Theme
+        let size: CGFloat, theme: Theme, look: TypographyLook
     }
 
-    private static func style(size: CGFloat, theme: Theme) -> Style {
-        let key = StyleKey(size: size, theme: theme)
+    private static func style(size: CGFloat, theme: Theme, look: TypographyLook) -> Style {
+        let key = StyleKey(size: size, theme: theme, look: look)
         if let cachedStyle, cachedStyle.key == key { return cachedStyle.style }
-        let style = Style(size: size, theme: theme)
+        let style = Style(size: size, theme: theme, look: key.look)
         cachedStyle = (key, style)
         return style
     }
@@ -96,7 +96,7 @@ enum MarkdownStyler {
         pattern: #"\bhttps?://(?:[^\s<>"'`()\[\]]|\([^\s<>"'`()]*\))*(?:[^\s<>"'`.,;:!?()\[\]*]|\([^\s<>"'`()]*\))"#
     )
 
-    static func bodyFont(size: CGFloat) -> NSFont { Design.font(size: size) }
+    static func bodyFont(size: CGFloat) -> NSFont { WritingFont.stored.body(size: size) }
 
     /// Extra advance after a `-` bullet, in characters.
     static let bulletKern: CGFloat = 0.5
@@ -130,7 +130,8 @@ enum MarkdownStyler {
         theme: Theme,
         edited: NSRange? = nil,
         chunk: NSRange? = nil,
-        fenceIndex: FenceIndex? = nil
+        fenceIndex: FenceIndex? = nil,
+        look: TypographyLook = .current
     ) {
         let ns = storage.string as NSString
         guard ns.length > 0 else { return }
@@ -161,13 +162,14 @@ enum MarkdownStyler {
             // callout's first line, a table's delimiter row), and blank
             // lines and headings by the lines either side.
             dirty = expandToBlocks(dirty, in: ns)
+            if look.bookParagraphs { dirty = Typography.widen(dirty, in: ns) }
             if blocksUnchanged(after: dirty, in: storage, fences: fences, mathFences: mathFences) {
                 range = dirty
             }
         }
         guard range.length > 0 else { return }
 
-        let style = Self.style(size: size, theme: theme)
+        let style = Self.style(size: size, theme: theme, look: look)
         storage.beginEditing()
         defer { storage.endEditing() }
         // Replace, not add: anything a pass applied last time has to go,
@@ -317,7 +319,12 @@ enum MarkdownStyler {
                 continue
             }
 
-            guard content.length > 0 else { continue }
+            guard content.length > 0 else {
+                if style.book, Typography.isFoldedBlank(ns, lineRange: lineRange, fences: fences, frontMatterEnd: frontMatterEnd) {
+                    storage.addAttribute(.paragraphStyle, value: style.foldedBlank, range: lineRange)
+                }
+                continue
+            }
 
             if HorizontalRuleLayoutManager.setextLevel(underline: lineRange, in: ns) != nil {
                 storage.addAttribute(.foregroundColor, value: style.syntax, range: content)
@@ -448,6 +455,9 @@ enum MarkdownStyler {
 
             if mayBeTask(ns, content) {
                 styleTask(content, storage: storage, ns: ns, style: style)
+            }
+            if style.book, Typography.bookRole(ns, lineRange: lineRange, fences: fences, frontMatterEnd: frontMatterEnd) {
+                storage.addAttribute(.paragraphStyle, value: style.bookParagraph, range: lineRange)
             }
         }
     }
@@ -889,9 +899,16 @@ enum MarkdownStyler {
         let codeParagraph: NSParagraphStyle
         let mathParagraph: NSParagraphStyle
         let centered: NSParagraphStyle
+        let family: WritingFont
+        /// Book paragraphs: an indented first line, and the blank line above folded.
+        let book: Bool
+        let bookParagraph: NSParagraphStyle
+        let foldedBlank: NSParagraphStyle
 
-        init(size: CGFloat, theme: Theme) {
+        init(size: CGFloat, theme: Theme, look: TypographyLook) {
             self.theme = theme
+            family = look.font
+            book = look.bookParagraphs
             palette = Palette.for(theme)
             code = CodeColors.for(theme)
             syntax = palette.syntax
@@ -899,12 +916,12 @@ enum MarkdownStyler {
             highlight = palette.highlight
             codeBackground = palette.codeBackground
             link = palette.link
-            base = Design.font(size: size)
-            strongFont = Design.font(size: size, weight: .semibold)
+            base = look.font.body(size: size)
+            strongFont = look.font.body(size: size, weight: .semibold)
             italic = Self.trait(base, .italic)
             quoteFont = base
             quote = palette.text.withAlphaComponent(0.7)
-            inlineMono = base
+            inlineMono = Design.font(size: size)
             mono = Design.font(size: (size * Design.codeScale).rounded())
             tableFont = mono
             tableHeaderFont = Design.font(size: mono.pointSize, weight: .semibold)
@@ -947,11 +964,19 @@ enum MarkdownStyler {
             let center = body.mutableCopy() as! NSMutableParagraphStyle
             center.alignment = .center
             centered = center
+
+            let indented = body.mutableCopy() as! NSMutableParagraphStyle
+            indented.firstLineHeadIndent = (size * 1.5).rounded()
+            bookParagraph = indented
+            let folded = NSMutableParagraphStyle()
+            folded.minimumLineHeight = 1
+            folded.maximumLineHeight = 1
+            foldedBlank = folded
         }
 
         func heading(level: Int) -> NSFont {
             let factor = level <= Design.headingScale.count ? Design.headingScale[level - 1] : 1
-            return Design.font(size: (base.pointSize * factor).rounded(), weight: .bold)
+            return family.heading(size: (base.pointSize * factor).rounded(), weight: .bold)
         }
 
         func headingColor(level: Int) -> NSColor { palette.strong }
@@ -969,8 +994,15 @@ enum MarkdownStyler {
 
         func adding(_ traits: NSFontDescriptor.SymbolicTraits, to current: NSFont?) -> NSFont {
             guard let current, current != base else { return traits == .bold ? strongFont : italic }
-            if traits == .bold { return Design.font(size: current.pointSize, weight: .semibold) }
+            if traits == .bold { return Self.semibold(current) }
             return Self.trait(current, traits)
+        }
+
+        /// `font` at semibold, in its own family (a heading stays a heading face, code stays mono).
+        static func semibold(_ font: NSFont) -> NSFont {
+            if font.isFixedPitch { return Design.font(size: font.pointSize, weight: .semibold) }
+            let descriptor = font.fontDescriptor.addingAttributes([.traits: [NSFontDescriptor.TraitKey.weight: NSFont.Weight.semibold]])
+            return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
         }
 
         static func trait(_ font: NSFont, _ traits: NSFontDescriptor.SymbolicTraits) -> NSFont {

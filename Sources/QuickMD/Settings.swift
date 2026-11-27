@@ -71,10 +71,15 @@ enum Settings {
         set { defaults.set(newValue, forKey: "ShowFormattingBar"); changed() }
     }
 
-    /// View › Paper: a warm paper colour behind the text instead of the plain ground.
+    /// View › Paper: a shortcut onto Settings › Page. On is the Paper page in
+    /// light; off is White. Either way dark goes back to Default.
     static var paperBackground: Bool {
-        get { defaults.bool(forKey: "PaperBackground") }
-        set { defaults.set(newValue, forKey: "PaperBackground"); changed() }
+        get { lightPage == .paper }
+        set {
+            defaults.set((newValue ? LightPage.paper : .white).rawValue, forKey: "LightPage")
+            defaults.set(DarkPage.standard.rawValue, forKey: "DarkPage")
+            changed()
+        }
     }
 
     /// View › Focus: every paragraph but the caret's is dimmed.
@@ -100,6 +105,91 @@ enum Settings {
     static var newDocumentStarter: Starter {
         get { Starter(rawValue: defaults.string(forKey: "NewDocumentStarter") ?? "") ?? .blank }
         set { defaults.set(newValue.rawValue, forKey: "NewDocumentStarter") }
+    }
+
+    // MARK: Writing and appearance (fonts, page, writing aids, counts)
+
+    /// Settings › Writing font.
+    static var writingFont: WritingFont {
+        get { .stored }
+        set { defaults.set(newValue.rawValue, forKey: "WritingFont"); changed() }
+    }
+
+    /// Settings › Line width.
+    static var lineWidth: LineWidth {
+        get { .stored }
+        set { defaults.set(newValue.rawValue, forKey: "LineWidth"); changed() }
+    }
+
+    /// Settings › Page: the ground in light appearance.
+    static var lightPage: LightPage {
+        get { .stored }
+        set { defaults.set(newValue.rawValue, forKey: "LightPage"); changed() }
+    }
+
+    /// Settings › Page: the ground in dark appearance.
+    static var darkPage: DarkPage {
+        get { .stored }
+        set { defaults.set(newValue.rawValue, forKey: "DarkPage"); changed() }
+    }
+
+    /// What Focus keeps bright: the caret's paragraph or its sentence.
+    static var focusScope: FocusScope {
+        get { FocusScope(rawValue: defaults.string(forKey: "FocusScope") ?? "") ?? .paragraph }
+        set { defaults.set(newValue.rawValue, forKey: "FocusScope"); changed() }
+    }
+
+    /// The title bar and tab bar fade while typing, back on mouse move.
+    static var fadesChrome: Bool {
+        get { defaults.bool(forKey: "FadeChrome") }
+        set { defaults.set(newValue, forKey: "FadeChrome"); changed() }
+    }
+
+    /// Smart quotes and dashes while typing, never inside code.
+    static var smartPunctuation: Bool {
+        get { defaults.bool(forKey: "SmartPunctuation") }
+        set { defaults.set(newValue, forKey: "SmartPunctuation"); changed() }
+    }
+
+    /// Display only: indented first lines, no blank-line gap between prose paragraphs.
+    static var bookParagraphs: Bool {
+        get { TypographyLook.current.bookParagraphs }
+        set { defaults.set(newValue, forKey: "BookParagraphs"); changed() }
+    }
+
+    /// View › Show Count As.
+    static var countStyle: CountStyle {
+        get { CountStyle(rawValue: defaults.string(forKey: "CountStyle") ?? "") ?? .words }
+        set { defaults.set(newValue.rawValue, forKey: "CountStyle"); changed() }
+    }
+
+    static let readingSpeedRange = 100...600
+
+    /// Words a minute, for reading time.
+    static var readingSpeed: Int {
+        get {
+            let stored = defaults.integer(forKey: "ReadingSpeed")
+            return stored == 0 ? 230 : min(max(stored, readingSpeedRange.lowerBound), readingSpeedRange.upperBound)
+        }
+        set {
+            defaults.set(min(max(newValue, readingSpeedRange.lowerBound), readingSpeedRange.upperBound), forKey: "ReadingSpeed")
+            changed()
+        }
+    }
+
+    /// View › Show Writing Aids.
+    static var showsWritingAids: Bool {
+        get { defaults.bool(forKey: "ShowWritingAids") }
+        set { defaults.set(newValue, forKey: "ShowWritingAids"); changed() }
+    }
+
+    /// The aids that are on (all by default).
+    static var writingAids: Set<WritingAids.Kind> {
+        get {
+            guard let stored = defaults.stringArray(forKey: "WritingAids") else { return Set(WritingAids.Kind.allCases) }
+            return Set(stored.compactMap(WritingAids.Kind.init(rawValue:)))
+        }
+        set { defaults.set(newValue.map(\.rawValue).sorted(), forKey: "WritingAids"); changed() }
     }
 
     private static func changed() {

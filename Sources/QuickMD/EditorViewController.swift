@@ -10,6 +10,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     private var barConstraints: (shown: NSLayoutConstraint, hidden: NSLayoutConstraint)?
     private var pendingEdit: NSRange?
     private var settingsObserver: Any?
+    /// Folded sections, drawn as nothing.
+    let folding = FoldController()
+    private var writingAids: WritingAidsPainter?
 
     /// While a live change plays in, the text it's heading for.
     var currentText: String { playback?.target ?? textView.string }
@@ -28,6 +31,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView = MarkdownTextView(frame: .zero, textContainer: container)
         super.init(nibName: nil, bundle: nil)
         layoutManager.delegate = self
+        folding.attach(textView, layoutManager)
         layoutManager.imageForLine = { [weak self] line, target in
             guard let self, self.isReading, NSIntersectionRange(self.activeLine, line).length == 0 else { return nil }
             return self.localImage(target)
@@ -105,6 +109,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             forName: .editorSettingsChanged, object: nil, queue: .main
         ) { [weak self] _ in self?.applySettings() }
         applySettings()
+        writingAids = WritingAidsPainter(textView: textView)
     }
 
     override func viewDidLayout() {
@@ -396,6 +401,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         lineFragmentUsedRect: UnsafeMutablePointer<NSRect>, baselineOffset: UnsafeMutablePointer<CGFloat>,
         in textContainer: NSTextContainer, forGlyphRange glyphRange: NSRange
     ) -> Bool {
+        // A folded section's lines take no room, in either mode.
+        if folding.hasFolds, folding.isFolded(layoutManager.characterIndexForGlyph(at: glyphRange.location)) {
+            lineFragmentRect.pointee.size.height = 0
+            lineFragmentUsedRect.pointee.size.height = 0
+            baselineOffset.pointee = 0
+            return true
+        }
         guard isReading, let storage = layoutManager.textStorage else { return false }
         let at = layoutManager.characterIndexForGlyph(at: glyphRange.location)
         // A table drawn as a grid: its first row makes room for the
@@ -446,7 +458,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         properties props: UnsafePointer<NSLayoutManager.GlyphProperty>,
         characterIndexes charIndexes: UnsafePointer<Int>, font aFont: NSFont, forGlyphRange glyphRange: NSRange
     ) -> Int {
-        guard isReading, let storage = layoutManager.textStorage else { return 0 }
+        guard isReading || folding.hasFolds, let storage = layoutManager.textStorage else { return 0 }
         var changed = false
         var out = [NSLayoutManager.GlyphProperty](repeating: [], count: glyphRange.length)
         var glyphOut = [CGGlyph](UnsafeBufferPointer(start: glyphs, count: glyphRange.length))
@@ -459,6 +471,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         for i in 0..<glyphRange.length {
             out[i] = props[i]
             let at = charIndexes[i]
+            if folding.hasFolds, folding.isFolded(at) {
+                if !props[i].contains(.controlCharacter) { out[i] = .null; changed = true }
+                continue
+            }
+            guard isReading else { continue }
             // An image line drawn as its picture hides its source text.
             if let grids, storage.attribute(.qmImage, at: at, effectiveRange: nil) != nil, grids.renderedImage(at: at) != nil {
                 if !props[i].contains(.controlCharacter) { out[i] = .null; changed = true }
@@ -622,6 +639,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         changeInLength delta: Int
     ) {
         guard editedMask.contains(.editedCharacters) else { return }
+        folding.storageEdited(editedRange, delta: delta)
         if let earlier = pendingEdit {
             let start = min(earlier.location, editedRange.location)
             let earlierEnd = NSMaxRange(earlier) + (editedRange.location <= NSMaxRange(earlier) ? delta : 0)
@@ -646,9 +664,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
+        folding.selectionChanged()
         updateActiveLine()
         updateFocus()
         centerCaret()
+        Typography.updateSubstitutions(textView)
         updateFormattingBar()
     }
 
@@ -701,7 +721,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             }
             return
         }
-        let block = Self.focusBlock(in: ns, at: textView.selectedRange().location)
+        var block = Self.focusBlock(in: ns, at: textView.selectedRange().location)
+        if Settings.focusScope == .sentence { block = Typography.sentence(in: ns, block: block, at: textView.selectedRange().location) }
         guard block != focusedBlock else { return }
         focusedBlock = block
         layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: all)
@@ -794,13 +815,19 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let theme = Settings.theme
         let palette = Palette.for(theme)
         let font = MarkdownStyler.bodyFont(size: Settings.fontSize)
-        let styleChanged = appliedStyle?.size != Settings.fontSize || appliedStyle?.theme != theme
-        appliedStyle = (Settings.fontSize, theme)
+        let look = TypographyLook.current
+        let styleChanged = appliedStyle?.size != Settings.fontSize || appliedStyle?.theme != theme || appliedStyle?.look != look
+        appliedStyle = (Settings.fontSize, theme, look)
+        Typography.updateSubstitutions(textView)
         view.appearance = NSAppearance(named: theme.appearanceName)
         let showsBar = Settings.showsFormattingBar
         formattingBar.isHidden = !showsBar
-        barConstraints?.hidden.isActive = !showsBar
-        barConstraints?.shown.isActive = showsBar
+        // Only while the scroll view and the bar still share the root view;
+        // activating across hierarchies throws.
+        if scrollView.superview === view, formattingBar.superview === view {
+            barConstraints?.hidden.isActive = !showsBar
+            barConstraints?.shown.isActive = showsBar
+        }
         formattingBar.apply(palette, theme: theme)
         updateFormattingBar()
         textView.insertionPointColor = palette.cursor
@@ -816,7 +843,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             layoutManager.calloutWash = theme == .dark ? 0.10 : 0.07
             layoutManager.tableBodyFont = font
         }
-        textView.font = font
+        // NSTextView.font sets the font of every character, so it would
+        // flatten headings to body size. Only set it when a full restyle
+        // follows, or when there is no text to flatten.
+        if styleChanged || textView.string.isEmpty { textView.font = font }
         // An empty note says where to start, and that `/` opens the blocks.
         // Secondary, but opaque enough to read: syntax grey is for
         // marks, not for the only sentence on an empty page.
@@ -840,8 +870,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// Show Markdown Syntax as last applied: only a change flips the mode.
     private var appliedShowsSyntax: Bool?
 
-    /// Size and theme, the only settings that change the text's attributes.
-    private var appliedStyle: (size: CGFloat, theme: Theme)?
+    /// Size, theme and look, the only settings that change the text's attributes.
+    private var appliedStyle: (size: CGFloat, theme: Theme, look: TypographyLook)?
 
     /// The text keeps to `Design.measure` characters; extra width
     /// becomes equal margins either side.

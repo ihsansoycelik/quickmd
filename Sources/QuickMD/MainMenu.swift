@@ -87,6 +87,8 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Export as HTML…", #selector(DocumentWindowController.exportHTML(_:)), "e", [.command, .shift]))
         menu.addItem(item("Export as PDF…", #selector(DocumentWindowController.exportPDF(_:))))
+        menu.addItem(item("Export as Word…", #selector(DocumentWindowController.exportWord(_:))))
+        menu.addItem(item("Export as Rich Text…", #selector(DocumentWindowController.exportRichText(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Page Setup…", #selector(NSDocument.runPageLayout(_:)), "p", [.command, .shift]))
         menu.addItem(item("Print…", #selector(DocumentWindowController.printRenderedDocument(_:)), "p"))
@@ -100,9 +102,17 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Cut", #selector(NSText.cut(_:)), "x"))
         menu.addItem(item("Copy", #selector(NSText.copy(_:)), "c"))
-        menu.addItem(item("Copy as HTML", #selector(DocumentWindowController.copyAsHTML(_:)), "c", [.command, .option]))
+        // Clipboard and export: Copy As, Paste as Markdown / Table, Check Links.
+        let copyAs = NSMenu(title: "Copy As")
+        copyAs.addItem(item("Markdown", #selector(MarkdownTextView.copyAsMarkdown(_:))))
+        copyAs.addItem(item("HTML", #selector(DocumentWindowController.copyAsHTML(_:)), "c", [.command, .option]))
+        copyAs.addItem(item("Rich Text", #selector(MarkdownTextView.copyAsRichText(_:)), "c", [.command, .option, .shift]))
+        copyAs.addItem(item("Plain Text", #selector(MarkdownTextView.copyAsPlainText(_:))))
+        menu.addItem(submenu(copyAs))
         menu.addItem(item("Paste", #selector(NSText.paste(_:)), "v"))
         menu.addItem(item("Paste and Match Style", #selector(NSTextView.pasteAsPlainText(_:)), "v", [.command, .option, .shift]))
+        menu.addItem(item("Paste as Markdown", #selector(MarkdownTextView.pasteAsMarkdown(_:)), "v", [.command, .option]))
+        menu.addItem(item("Paste as Table", #selector(MarkdownTextView.pasteAsTable(_:))))
         menu.addItem(item("Delete", #selector(NSText.delete(_:))))
         menu.addItem(item("Select All", #selector(NSText.selectAll(_:)), "a"))
         menu.addItem(.separator())
@@ -122,6 +132,7 @@ enum MainMenu {
         spelling.addItem(item("Check Document Now", #selector(NSText.checkSpelling(_:)), ";"))
         spelling.addItem(item("Check Spelling While Typing", #selector(NSTextView.toggleContinuousSpellChecking(_:))))
         menu.addItem(submenu(spelling))
+        menu.addItem(item("Check Links…", #selector(DocumentWindowController.checkLinks(_:))))
 
         let substitutions = NSMenu(title: "Substitutions")
         substitutions.addItem(item("Smart Quotes", #selector(NSTextView.toggleAutomaticQuoteSubstitution(_:))))
@@ -139,6 +150,7 @@ enum MainMenu {
         speech.addItem(item("Start Speaking", #selector(NSTextView.startSpeaking(_:))))
         speech.addItem(item("Stop Speaking", #selector(NSTextView.stopSpeaking(_:))))
         menu.addItem(submenu(speech))
+        StructureMenus.edit().forEach(menu.addItem)
 
         // Apple Intelligence: proofread, rewrite, summarize the selection.
         if #available(macOS 15.2, *) {
@@ -157,7 +169,7 @@ enum MainMenu {
         menu.addItem(item("Link", #selector(MarkdownTextView.insertLink(_:)), "k"))
         menu.addItem(item("Clear Formatting", #selector(MarkdownTextView.clearFormatting(_:))))
         menu.addItem(.separator())
-        for level in 1...4 {
+        for level in 1...6 {
             menu.addItem(item(String(format: L("Heading %d"), level), #selector(MarkdownTextView.setHeading(_:)), "\(level)", [.command, .option], tag: level))
         }
         menu.addItem(item("Body Text", #selector(MarkdownTextView.setHeading(_:)), "0", [.command, .option], tag: 0))
@@ -184,6 +196,7 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Indent", #selector(MarkdownTextView.indentLines(_:)), "]"))
         menu.addItem(item("Outdent", #selector(MarkdownTextView.outdentLines(_:)), "["))
+        StructureMenus.format().forEach(menu.addItem)
         return menu
     }
 
@@ -216,6 +229,10 @@ enum MainMenu {
         menu.addItem(item("Typewriter", #selector(AppDelegate.toggleTypewriterMode(_:)), target: app))
         menu.addItem(.separator())
         menu.addItem(item("Show Sidebar", #selector(AppDelegate.toggleFileSidebar(_:)), "s", [.command, .control], target: app))
+        StructureMenus.view().forEach(menu.addItem)
+        menu.addItem(.separator())
+        WritingMenu.addItems(to: menu)  // Show Count As, Writing Goal…, Show Writing Aids
+        menu.addItem(.separator())
         menu.addItem(item("Show Tab Bar", #selector(NSWindow.toggleTabBar(_:))))
         menu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
         return menu

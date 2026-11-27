@@ -28,7 +28,26 @@ Notable changes to QuickMD. The format follows [Keep a Changelog](https://keepac
 - Format › Footnote, Today’s Date and Clear Formatting; Footnote and Today’s Date in the / menu too.
 - An optional file sidebar (View › Show Sidebar, ⌃⌘S, or the title bar button), off by default: the notes in the document's folder as a tree, a filter field, the current note highlighted, a click to open, live updates as files change, and Open in New Window, Show in Finder and New Note Here on right-click.
 - A quiet formatting bar under the text: bold, italic, strikethrough, code, link, the block style of the caret's line, lists, quote, code block, table and an insert menu, with the word count and a Paper toggle. View › Show Formatting Bar hides it; while it's shown, the word count moves from the subtitle into the bar.
-- View › Paper gives the editor a warm paper background, in light and dark.
+- View › Paper (or Paper in the bar) switches the page between Paper and White in light, the same setting as Settings › Appearance › page colour; dark goes back to Default.
+- View › Go to Heading… (⌃⌘O): a small search over the note's headings; type to filter, ↑↓ and Return to jump.
+- View › Fold Section (⌥⌘←), Unfold Section (⌥⌘→) and Unfold All: a section's text hides under its heading behind a `…`, only on screen; the file never changes. Editing in it or moving the caret into it opens it again.
+- Format › Heading 5 and Heading 6 (⌥⌘5, ⌥⌘6), Promote Heading (⌃⌘↑) and Demote Heading (⌃⌘↓).
+- Format › Move Line Up and Down (⌥⌘↑, ⌥⌘↓; a list item moves with its nested items) and Delete Line (⇧⌘K), each one undo step.
+- Format › Check Selected and Uncheck Selected tick or clear every task in the selection.
+- Format › Table: add, delete and move rows and columns, align a column left, centre or right, and tidy the table.
+- Format › Highlight (⇧⌘H) toggles `==highlight==`.
+- Format › Table of Contents (linked, nested by level) and Front Matter (title and date, only if the note has none); both in the / menu too.
+- Edit › Copy Link to Heading copies `[Title](#anchor)` for the heading under the caret.
+- Edit › Copy As › Markdown, HTML (⌥⌘C), Rich Text (⌥⇧⌘C) and Plain Text, for the selection or the whole note. Rich text pastes formatted into Mail, Pages and Notes.
+- Edit › Paste as Markdown (⌥⌘V) turns copied HTML or rich text into Markdown; ⌘V does it too when the pasteboard has HTML but no plain text.
+- Cells copied from Numbers, Excel or Sheets paste as a Markdown table; Edit › Paste as Table does the same for CSV or TSV text.
+- File › Export as Word… (.docx) and Export as Rich Text… (.rtf). Images are left out (their alt text stays), so nothing is fetched.
+- Edit › Check Links… lists missing files and images, `#anchors` with no heading and footnotes with no definition, by line; clicking one selects it. Web links are only counted, never fetched.
+- Settings › Appearance: writing font (Mono, Duo, Sans, Serif; code stays monospaced), line width (Narrow, Normal, Wide) and page colour (Paper, White or Grey in light, Default or Black in dark). Export and print follow the font and width.
+- Settings › Writing: Focus on the paragraph or the sentence; fade the title bar and tabs while typing; smart quotes and dashes (off by default, never in code); book paragraphs (indented first lines, no gap between paragraphs, display only); reading speed.
+- View › Show Count As words, characters or lines; View › Writing Goal… sets a word target per note, kept on this Mac and not in the file, shown as “320 / 1,000 words”.
+- View › Show Writing Aids: dotted underlines for long sentences, repeated words, fillers and hedges (English and Turkish), -ly adverbs and possible passives (English). On-device, never saved; each aid can be turned off in Settings.
+- Settings is now four panes: Appearance, Writing, Writing Aids and General, with a short description under each switch.
 
 ### Fixed
 

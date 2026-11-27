@@ -8,12 +8,13 @@ import WebKit
 /// is the optional file sidebar (View › Show Sidebar), off by default,
 /// and the only bar is the optional formatting bar under the text.
 final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
-    private let editor = EditorViewController()
+    let editor = EditorViewController()
     var editorForTests: EditorViewController { editor }
     private lazy var split = SidebarSplitController(editor: editor)
     private var settingsObserver: Any?
     private var positionObservers: [Any] = []
     private var positionSave: Timer?
+    private var chromeFader: ChromeFader?
 
     private var markdownDocument: MarkdownDocument? { document as? MarkdownDocument }
 
@@ -65,6 +66,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             },
         ]
 
+        chromeFader = ChromeFader(window: window, textView: editor.textView)
         document.editor = editor
         editor.textView.baseURL = document.fileURL?.deletingLastPathComponent()
         split.sidebar.documentURL = document.fileURL
@@ -111,12 +113,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         let text = editor.currentText
         let selection = editor.textView.selectedRange()
         // A selection with no words (a hidden marker, a space) counts the whole note.
-        var words = Self.wordCount(text)
+        var selected: String?
         if selection.length > 0, NSMaxRange(selection) <= (text as NSString).length {
-            let selected = Self.wordCount((text as NSString).substring(with: selection))
-            if selected > 0 { words = selected }
+            selected = (text as NSString).substring(with: selection)
         }
-        let line = Self.countLine(words: words)
+        let line = WritingStats.subtitle(
+            text: text, selection: selected, style: Settings.countStyle,
+            goal: writingGoal, wordsPerMinute: Settings.readingSpeed
+        )
         let inBar = Settings.showsFormattingBar
         editor.formattingBar.metaText = inBar ? line : ""
         let subtitle = inBar ? "" : line
@@ -174,7 +178,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private func applyTheme() {
         let theme = Settings.theme
         window?.appearance = NSAppearance(named: theme.appearanceName)
-        window?.backgroundColor = Palette.editorBackground(theme, paper: Settings.paperBackground)
+        window?.backgroundColor = Palette.for(theme).background
         // Settings › Open documents in tabs should reach windows that
         // are already open, not just the next one.
         window?.tabbingMode = Settings.opensInTabs ? .preferred : .disallowed
@@ -183,7 +187,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: Export
 
-    private var documentTitle: String {
+    var documentTitle: String {
         ((markdownDocument?.displayName ?? L("Untitled")) as NSString).deletingPathExtension
     }
 
@@ -255,7 +259,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         alert.messageText = String(format: L("%@ words"), Self.number(all.words))
         var lines = [
             String(format: L("%@ characters"), Self.number(all.characters)),
-            String(format: L("About %@ min to read"), Self.number(max(1, Int((Double(all.words) / 230).rounded(.up))))),
+            String(format: L("About %@ min to read"), Self.number(max(1, WritingStats.minutes(words: all.words, wordsPerMinute: Settings.readingSpeed)))),
         ]
         if selection.length > 0 {
             let part = Self.counts((text as NSString).substring(with: selection))

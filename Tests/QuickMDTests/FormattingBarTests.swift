@@ -29,22 +29,33 @@ struct FormattingBarTests {
 
     @Test func settingsDefaults() {
         let defaults = UserDefaults.standard
-        let saved = (defaults.object(forKey: "ShowFormattingBar"), defaults.object(forKey: "PaperBackground"))
+        let saved = (defaults.object(forKey: "ShowFormattingBar"), defaults.object(forKey: "LightPage"))
         defer {
             defaults.set(saved.0, forKey: "ShowFormattingBar")
-            defaults.set(saved.1, forKey: "PaperBackground")
+            defaults.set(saved.1, forKey: "LightPage")
         }
         defaults.removeObject(forKey: "ShowFormattingBar")
-        defaults.removeObject(forKey: "PaperBackground")
+        defaults.removeObject(forKey: "LightPage")
         #expect(Settings.showsFormattingBar)
-        #expect(!Settings.paperBackground)
+        #expect(Settings.paperBackground)  // the Paper page is the default
     }
 
-    @Test func paperChangesOnlyTheGround() {
-        for theme in Theme.allCases {
-            #expect(Palette.editorBackground(theme, paper: false) == Palette.for(theme).background)
-            #expect(Palette.editorBackground(theme, paper: true) != Palette.for(theme).background)
+    /// View › Paper and Settings › Page are one setting.
+    @Test func paperToggleDrivesThePageSetting() {
+        let defaults = UserDefaults.standard
+        let saved = (defaults.object(forKey: "LightPage"), defaults.object(forKey: "DarkPage"))
+        defer {
+            defaults.set(saved.0, forKey: "LightPage")
+            defaults.set(saved.1, forKey: "DarkPage")
         }
+        Settings.darkPage = .black
+        Settings.paperBackground = false
+        #expect(Settings.lightPage == .white && Settings.darkPage == .standard)
+        Settings.paperBackground = true
+        #expect(Settings.lightPage == .paper && Settings.darkPage == .standard)
+        Settings.lightPage = .grey
+        #expect(!Settings.paperBackground)
+        #expect(Palette.for(.light).background == LightPage.grey.background)
     }
 
     @Test func styleFollowsCaret() {
