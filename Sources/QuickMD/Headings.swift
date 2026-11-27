@@ -34,18 +34,14 @@ enum Headings {
         var location = 0
         var previous: (text: String, location: Int)?
         var lineNumber = 0
-        var frontMatter = false
+        // Front matter is skipped only where the renderer skips it: a
+        // closed block. An unclosed `---` + `key:` start is plain text.
+        let frontMatterLines = MarkdownHTML.frontMatterEnd(text.components(separatedBy: "\n")).map { $0 + 1 } ?? 0
         while location < ns.length {
             let lineRange = ns.lineRange(for: NSRange(location: location, length: 0))
             let line = ns.substring(with: lineRange).trimmingCharacters(in: .newlines)
             defer { location = NSMaxRange(lineRange); lineNumber += 1 }
-            if lineNumber == 0, line == "---" { frontMatter = true; continue }
-            if frontMatter {
-                if line == "---" || line == "..." { frontMatter = false }
-                // Not front matter after all: no `key:` on its first line.
-                if lineNumber == 1, line.range(of: #"^[A-Za-z0-9_-]+:"#, options: .regularExpression) == nil { frontMatter = false }
-                else { continue }
-            }
+            if lineNumber < frontMatterLines { continue }
             if let open = fence {
                 if MarkdownHTML.closes(line, open) { fence = nil }
                 previous = nil

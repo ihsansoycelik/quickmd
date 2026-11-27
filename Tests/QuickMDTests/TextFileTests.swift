@@ -45,6 +45,16 @@ struct TextFileTests {
         #expect(try TextFile.decode(try file.encode(file.text)).text == "Ünlü ✓\n")
     }
 
+    @Test func utf16ByteOrderIsKept() throws {
+        let text = "Ünlü ✓\r\n"
+        for (mark, encoding) in [([UInt8(0xFE), 0xFF], String.Encoding.utf16BigEndian), ([0xFF, 0xFE], .utf16LittleEndian)] {
+            let bytes = mark + [UInt8](text.data(using: encoding)!)
+            let file = try TextFile.decode(Data(bytes))
+            #expect(file.text == "Ünlü ✓\n")
+            #expect(try roundTrip(bytes) == bytes)
+        }
+    }
+
     @Test func binaryIsRefused() {
         #expect(throws: (any Error).self) { try TextFile.decode(Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D])) }
         var random = SystemRandomNumberGenerator()

@@ -85,7 +85,10 @@ final class MarkdownTextView: NSTextView {
             return
         }
 
-        guard let marker = SmartEditing.nextListMarker(for: afterCaret.isEmpty ? body : body + afterCaret) else {
+        // The marker has to be before the caret: Return at the start of
+        // `- foo` (or inside `1.`) just breaks the line.
+        guard SmartEditing.nextListMarker(for: body) != nil,
+              let marker = SmartEditing.nextListMarker(for: afterCaret.isEmpty ? body : body + afterCaret) else {
             return super.insertNewline(sender)
         }
         if marker.isEmpty {
@@ -93,6 +96,8 @@ final class MarkdownTextView: NSTextView {
             if !indent.isEmpty {
                 let outdented = String(indent.dropFirst(min(indent.count, 4)))
                 replace(NSRange(location: line.location, length: indent.utf16.count), with: outdented)
+                // The caret stays after the marker, not before it.
+                setSelectedRange(NSRange(location: selection.location - (indent.utf16.count - outdented.utf16.count), length: 0))
             } else {
                 replace(NSRange(location: line.location, length: beforeCaret.utf16.count), with: "")
             }
@@ -281,6 +286,8 @@ final class MarkdownTextView: NSTextView {
         let original = ns.substring(with: block)
         var lines = original.components(separatedBy: "\n")
         if original.hasSuffix("\n") { lines.removeLast() }
+        // Without a delimiter row it's text with pipes, not a table.
+        guard lines.contains(where: TableEditing.isDelimiter) else { return false }
         let here = TableEditing.cellIndex(in: original, at: selection.location - block.location)
         var layout = TableEditing.format(lines)
         let columns = layout.cells.first?.count ?? 0

@@ -258,4 +258,35 @@ struct RendererTests {
         let note = String(repeating: block, count: 1_000)  // ~11,000 lines
         #expect(time { _ = html(note) } < 3)
     }
+
+    // MARK: Review fixes
+
+    @Test func commentCannotHideTags() {
+        #expect(!html("<!--><img src=x onerror=alert(1)>-->").contains("<img"))
+        #expect(!html("<!-- --!><link rel=stylesheet href=https://x/a.css> -->").contains("<link"))
+    }
+
+    @Test func imageAltCannotBreakOut() {
+        let out = html("![<https://h/onerror=alert(1)//>](a.png)")
+        #expect(!out.contains("onerror"))
+        #expect(html("![$x$](a.png)").contains(#"<img src="a.png" alt="">"#))
+    }
+
+    @Test func paddedEntityDoesNotHideJavascript() {
+        #expect(!html(#"<a href="&#x0000006a;avascript:alert(1)">x</a>"#).contains("avascript:alert"))
+    }
+
+    @Test func wikiLinkCannotBeJavascript() {
+        #expect(!html("[[javascript:alert(1)//]]").contains("href=\"javascript"))
+    }
+
+    @Test func plaintextTagIsDropped() {
+        #expect(!html("<plaintext>\nrest").contains("<plaintext"))
+    }
+
+    @Test func numberedLineDoesNotInterruptParagraph() {
+        let out = html("We moved there in\n2019. It rained.")
+        #expect(!out.contains("<ol"))
+        #expect(html("Intro\n1. one\n2. two").contains("<ol>"))
+    }
 }

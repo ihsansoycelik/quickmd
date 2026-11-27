@@ -18,9 +18,12 @@ struct TextFile: Equatable {
         let bytes = [UInt8](data.prefix(3))
         var file: TextFile
         if bytes.count >= 2, bytes[0] == 0xFF && bytes[1] == 0xFE || bytes[0] == 0xFE && bytes[1] == 0xFF {
-            // UTF-16 with its mark; the encoder writes the mark back.
-            guard let text = String(data: data, encoding: .utf16) else { throw CocoaError(.fileReadCorruptFile) }
-            file = TextFile(text: text, encoding: .utf16, hasBOM: true)
+            // UTF-16 with its mark. The byte order is kept as found (plain
+            // `.utf16` would write the host's order back), and the encoder
+            // writes the mark back.
+            let encoding: String.Encoding = bytes[0] == 0xFF ? .utf16LittleEndian : .utf16BigEndian
+            guard let text = String(data: data.dropFirst(2), encoding: encoding) else { throw CocoaError(.fileReadCorruptFile) }
+            file = TextFile(text: text, encoding: encoding, hasBOM: true)
         } else {
             guard !looksBinary(data) else { throw CocoaError(.fileReadCorruptFile) }
             if let utf8 = String(data: data, encoding: .utf8) {
@@ -49,7 +52,13 @@ struct TextFile: Equatable {
     func encode(_ text: String) throws -> Data {
         let output = lineEnding == "\n" ? text : text.replacingOccurrences(of: "\n", with: lineEnding)
         if let data = output.data(using: encoding) {
-            return encoding == .utf8 && hasBOM ? Data(Self.utf8BOM) + data : data
+            guard hasBOM else { return data }
+            switch encoding {
+            case .utf8: return Data(Self.utf8BOM) + data
+            case .utf16LittleEndian: return Data([0xFF, 0xFE]) + data
+            case .utf16BigEndian: return Data([0xFE, 0xFF]) + data
+            default: return data
+            }
         }
         // A character the old encoding can't hold: UTF-8 rather than loss.
         guard let data = output.data(using: .utf8) else { throw CocoaError(.fileWriteInapplicableStringEncoding) }

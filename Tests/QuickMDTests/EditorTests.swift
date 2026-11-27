@@ -47,6 +47,29 @@ struct EditorTests {
         #expect(view.string == "- \n- foo")
     }
 
+    @Test func returnBeforeTheMarkerJustBreaksTheLine() {
+        let view = editor("‸- foo")
+        view.insertNewline(nil)
+        #expect(view.string == "\n- foo")
+        let numbered = editor("1‸. foo")
+        numbered.insertNewline(nil)
+        #expect(numbered.string == "1\n. foo")
+    }
+
+    @Test func returnOnEmptyNestedItemKeepsCaretAfterMarker() {
+        let view = editor("- a\n    - ‸")
+        view.insertNewline(nil)
+        #expect(view.string == "- a\n- ")
+        #expect(view.selectedRange().location == (view.string as NSString).length)
+    }
+
+    @Test func tabOnAPipeLineWithoutTableIsATab() {
+        let view = editor("|note‸")
+        view.insertTab(nil)
+        #expect(view.string.hasPrefix("|note"))
+        #expect(!view.string.hasSuffix(" |"))
+    }
+
     @Test func returnOnEmptyItemEndsTheList() {
         let view = editor("- a\n- ‸")
         view.insertNewline(nil)
@@ -172,6 +195,13 @@ struct EditorTests {
         let note = "---\ntitle: x\n---\nTitle\n=====\n\n  ## Indented\n\n```\n~~~\n# not a heading\n```\n\nSub\n---\n"
         let titles = Headings.find(in: note).map(\.title)
         #expect(titles == ["Title", "Indented", "Sub"])
+    }
+
+    @Test func unclosedFrontMatterKeepsItsHeadings() {
+        // The renderer shows these lines as text, so `#intro` must still resolve.
+        let note = "---\ntitle: x\n# Intro\n"
+        #expect(MarkdownHTML.render(note).contains("id=\"intro\""))
+        #expect(Headings.find(in: note).map(\.title) == ["Intro"])
     }
 
     // MARK: Styling speed

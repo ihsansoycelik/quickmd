@@ -39,6 +39,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
 
     deinit {
         if let settingsObserver { NotificationCenter.default.removeObserver(settingsObserver) }
+        playback?.timer?.invalidate()
     }
 
     override func loadView() {
@@ -185,8 +186,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         // 60 frames a second: slow enough to read along (180 characters a
         // second), but never longer than three seconds.
         let perTick = max(3, Int((Double(inserted.length) / 180).rounded(.up)))
-        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.typeNext(perTick) }
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            // A window closed mid-playback must not leave the timer ticking.
+            MainActor.assumeIsolated {
+                guard let self else { return timer.invalidate() }
+                self.typeNext(perTick)
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         playback?.timer = timer

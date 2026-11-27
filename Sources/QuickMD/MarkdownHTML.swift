@@ -485,7 +485,10 @@ enum MarkdownHTML {
             }
 
             // List.
-            if listItem(line) != nil {
+            // A list interrupts a paragraph only when it starts at 1 and has
+            // text (CommonMark), so a wrapped line like `2019. It rained.` stays prose.
+            if let item = listItem(line),
+               paragraph.isEmpty || (!item.text.trimmingCharacters(in: .whitespaces).isEmpty && (!item.ordered || item.start == 1)) {
                 flush()
                 let (html, next) = renderList(lines, origin, from: i, context: context)
                 out += html
@@ -755,10 +758,10 @@ enum MarkdownHTML {
             if m[1] == "!" {
                 let ext = (file as NSString).pathExtension.lowercased()
                 if ["png", "jpg", "jpeg", "gif", "webp", "svg", "heic", "avif"].contains(ext) {
-                    return keep("<img src=\"\(escape(path))\" alt=\"\(escape(m[3].isEmpty ? parts[0] : m[3]))\">")
+                    return keep("<img src=\"\(escape(safeURL(path)))\" alt=\"\(escape(m[3].isEmpty ? parts[0] : m[3]))\">")
                 }
             }
-            return keep("<a class=\"wikilink\" href=\"\(escape(path + fragment))\">\(escape(label))</a>")
+            return keep("<a class=\"wikilink\" href=\"\(escape(safeURL(path + fragment)))\">\(escape(label))</a>")
         }
         // Inline HTML tags pass through, sanitised.
         s = replace(s, #"</?[A-Za-z][A-Za-z0-9-]*(?:[^<>"']|"[^"]*"|'[^']*')*>"#) { m in keep(sanitize(m[0])) }
@@ -875,22 +878,30 @@ enum MarkdownHTML {
                 var k = j + quot.count
                 while k < u.count, k - j < 1024, !has(quot, at: k) { k += 1 }
                 guard has(quot, at: k) else { i += 1; continue }
-                title = text(j + quot.count, k)
+                title = plainAttribute(text(j + quot.count, k))
                 j = k + quot.count
                 while j < u.count, u[j] == 0x20 { j += 1 }
             }
             guard j < u.count, u[j] == 0x29 else { i += 1; continue }
             let label = text(i + 1, close)
+            // Inside an attribute a stashed fragment would restore as markup
+            // (a code span, an autolink's quotes) and break out of it.
+            let alt = plainAttribute(label)
             let destination = safeURL(text(destStart, destEnd))
             let titleAttr = title.isEmpty ? "" : " title=\"\(title)\""
             out += text(pos, image ? i - 1 : i)
             out += image
-                ? keep("<img src=\"\(destination)\" alt=\"\(label)\"\(titleAttr)>")
+                ? keep("<img src=\"\(destination)\" alt=\"\(alt)\"\(titleAttr)>")
                 : keep("<a href=\"\(destination)\"\(titleAttr)>\(emphasis(label))</a>")
             pos = j + 1
             i = j + 1
         }
         return out + text(pos, u.count)
+    }
+
+    /// Escaped text for an attribute value, without stash placeholders.
+    private static func plainAttribute(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{E000}\\d+\u{E001}", with: "", options: .regularExpression)
     }
 
     private static func emphasis(_ text: String) -> String {
@@ -925,7 +936,7 @@ enum MarkdownHTML {
     /// Elements dropped with everything inside them.
     private static let containers = "script|style|iframe|frame|frameset|object|embed|applet|noscript|template|textarea|title|xmp|noembed|noframes|svg|math"
     /// Elements dropped, keeping what's between their tags.
-    private static let dropped = containers + "|base|meta|link|form|input|button|select|option|portal|param|source|track"
+    private static let dropped = containers + "|base|meta|link|form|input|button|select|option|portal|param|source|track|plaintext"
 
     private static let containerPattern = regex("(?is)<(\(containers))\\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>.*?</\\1\\s*>")
     private static let tokenPattern = regex(#"(<!--[\s\S]*?-->)|(</?)([A-Za-z][A-Za-z0-9:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|(<)"#)
@@ -940,7 +951,9 @@ enum MarkdownHTML {
     static func sanitize(_ html: String) -> String {
         var s = replace(html, containerPattern) { _ in "" }
         s = replace(s, tokenPattern) { m in
-            if !m[1].isEmpty { return m[1] }  // comment
+            // Comments go: browsers end one early (`<!-->`, `--!>`), which
+            // would let the tags after it through unsanitised.
+            if !m[1].isEmpty { return "" }
             if !m[5].isEmpty { return "&lt;" }
             let name = m[3]
             if groups(droppedPattern, name) != nil { return "" }
@@ -977,7 +990,7 @@ enum MarkdownHTML {
     private static func decodeEntities(_ value: String) -> String {
         var v = value.replacingOccurrences(of: "&amp;", with: "&")
         // Entities a scheme could hide behind: `jav&#x61;script:`.
-        v = replace(v, #"&#([xX])?([0-9A-Fa-f]{1,7});?"#) { m in
+        v = replace(v, #"&#([xX])?0*([0-9A-Fa-f]{1,7});?"#) { m in
             let code = UInt32(m[2], radix: m[1].isEmpty ? 10 : 16) ?? 0
             return Unicode.Scalar(code).map { String(Character($0)) } ?? ""
         }
