@@ -12,7 +12,11 @@ final class SettingsWindowController: NSWindowController {
         let tabs = SettingsTabsController()
         tabs.tabStyle = .toolbar
         for pane in SettingsPane.allCases {
-            let item = NSTabViewItem(viewController: SettingsPaneController(pane))
+            let controller = SettingsPaneController(pane)
+            // The tab controller copies the pane's title into the window's;
+            // without one the window reads "Untitled".
+            controller.title = pane.title
+            let item = NSTabViewItem(viewController: controller)
             item.label = pane.title
             item.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.title)
             tabs.addTabViewItem(item)
