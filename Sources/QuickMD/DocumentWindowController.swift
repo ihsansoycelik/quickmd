@@ -6,7 +6,7 @@ import WebKit
 /// view that reads like the page and edits like markdown, its marks
 /// showing only on the caret's line. No sidebar, no toolbar.
 final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
-    private let editor = EditorViewController()
+    let editor = EditorViewController()
     var editorForTests: EditorViewController { editor }
     private var settingsObserver: Any?
     private var positionObservers: [Any] = []
@@ -166,7 +166,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: Export
 
-    private var documentTitle: String {
+    var documentTitle: String {
         ((markdownDocument?.displayName ?? L("Untitled")) as NSString).deletingPathExtension
     }
 

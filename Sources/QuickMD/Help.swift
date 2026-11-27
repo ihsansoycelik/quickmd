@@ -39,7 +39,9 @@ enum Help {
     ## Files
 
     - Notes save themselves. File › Browse All Versions… goes back to earlier versions; File › Revert To Saved returns to the last saved copy.
-    - File › Export as HTML or PDF, Edit › Copy as HTML, File › Print.
+    - File › Export as HTML, PDF, Word or Rich Text, Edit › Copy As (Markdown, HTML, Rich Text, Plain Text), File › Print.
+    - Edit › Paste as Markdown (⌥⌘V) turns copied web or rich text into Markdown; cells copied from a spreadsheet paste as a table, and Edit › Paste as Table does the same for CSV.
+    - Edit › Check Links… lists missing files and images, unknown #anchors and footnotes without a definition, without going online.
     - When another app changes an open note and nothing is unsaved, QuickMD reloads it.
     - Reopened notes come back with the caret and the view where you left them.
     - In any app, select text and choose Services › New QuickMD Note With Selection.
@@ -88,7 +90,9 @@ enum Help {
     ## Dosyalar
 
     - Notlar kendiliğinden kaydedilir. Dosya › Tüm Sürümlere Göz At… eski sürümlere götürür; Dosya › Kaydedilmiş Sürüme Dön son kaydedilen kopyaya döner.
-    - Dosya › HTML ya da PDF olarak dışa aktar, Düzen › HTML Olarak Kopyala, Dosya › Yazdır.
+    - Dosya › HTML, PDF, Word ya da Zengin Metin olarak dışa aktar, Düzen › Farklı Kopyala (Markdown, HTML, Zengin Metin, Düz Metin), Dosya › Yazdır.
+    - Düzen › Markdown Olarak Yapıştır (⌥⌘V) kopyalanan web ya da zengin metni Markdown'a çevirir; bir tablodan kopyalanan hücreler tablo olarak yapışır, Düzen › Tablo Olarak Yapıştır CSV için de aynısını yapar.
+    - Düzen › Bağlantıları Denetle… eksik dosya ve görselleri, bilinmeyen #bağlantıları ve tanımı olmayan dipnotları internete çıkmadan listeler.
     - Açık bir notu başka bir uygulama değiştirirse ve kaydedilmemiş bir şey yoksa QuickMD onu yeniden yükler.
     - Yeniden açılan not, imleç ve görünüm bıraktığınız yerde açılır.
     - Herhangi bir uygulamada metin seçip Servisler › Seçimle Yeni QuickMD Notu’nu seçebilirsiniz.
