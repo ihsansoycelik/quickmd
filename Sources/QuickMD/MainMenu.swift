@@ -139,6 +139,7 @@ enum MainMenu {
         speech.addItem(item("Start Speaking", #selector(NSTextView.startSpeaking(_:))))
         speech.addItem(item("Stop Speaking", #selector(NSTextView.stopSpeaking(_:))))
         menu.addItem(submenu(speech))
+        StructureMenus.edit().forEach(menu.addItem)
 
         // Apple Intelligence: proofread, rewrite, summarize the selection.
         if #available(macOS 15.2, *) {
@@ -157,7 +158,7 @@ enum MainMenu {
         menu.addItem(item("Link", #selector(MarkdownTextView.insertLink(_:)), "k"))
         menu.addItem(item("Clear Formatting", #selector(MarkdownTextView.clearFormatting(_:))))
         menu.addItem(.separator())
-        for level in 1...4 {
+        for level in 1...6 {
             menu.addItem(item(String(format: L("Heading %d"), level), #selector(MarkdownTextView.setHeading(_:)), "\(level)", [.command, .option], tag: level))
         }
         menu.addItem(item("Body Text", #selector(MarkdownTextView.setHeading(_:)), "0", [.command, .option], tag: 0))
@@ -184,6 +185,7 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Indent", #selector(MarkdownTextView.indentLines(_:)), "]"))
         menu.addItem(item("Outdent", #selector(MarkdownTextView.outdentLines(_:)), "["))
+        StructureMenus.format().forEach(menu.addItem)
         return menu
     }
 
@@ -213,6 +215,7 @@ enum MainMenu {
         menu.addItem(item("Focus", #selector(AppDelegate.toggleFocusMode(_:)), target: app))
         menu.addItem(item("Typewriter", #selector(AppDelegate.toggleTypewriterMode(_:)), target: app))
         menu.addItem(.separator())
+        StructureMenus.view().forEach(menu.addItem)
         menu.addItem(item("Show Tab Bar", #selector(NSWindow.toggleTabBar(_:))))
         menu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
         return menu

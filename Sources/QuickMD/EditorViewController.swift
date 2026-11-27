@@ -7,6 +7,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     private let scrollView: NSScrollView
     private var pendingEdit: NSRange?
     private var settingsObserver: Any?
+    /// Folded sections, drawn as nothing.
+    let folding = FoldController()
 
     /// While a live change plays in, the text it's heading for.
     var currentText: String { playback?.target ?? textView.string }
@@ -25,6 +27,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView = MarkdownTextView(frame: .zero, textContainer: container)
         super.init(nibName: nil, bundle: nil)
         layoutManager.delegate = self
+        folding.attach(textView, layoutManager)
         layoutManager.imageForLine = { [weak self] line, target in
             guard let self, self.isReading, NSIntersectionRange(self.activeLine, line).length == 0 else { return nil }
             return self.localImage(target)
@@ -385,6 +388,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         lineFragmentUsedRect: UnsafeMutablePointer<NSRect>, baselineOffset: UnsafeMutablePointer<CGFloat>,
         in textContainer: NSTextContainer, forGlyphRange glyphRange: NSRange
     ) -> Bool {
+        // A folded section's lines take no room, in either mode.
+        if folding.hasFolds, folding.isFolded(layoutManager.characterIndexForGlyph(at: glyphRange.location)) {
+            lineFragmentRect.pointee.size.height = 0
+            lineFragmentUsedRect.pointee.size.height = 0
+            baselineOffset.pointee = 0
+            return true
+        }
         guard isReading, let storage = layoutManager.textStorage else { return false }
         let at = layoutManager.characterIndexForGlyph(at: glyphRange.location)
         // A table drawn as a grid: its first row makes room for the
@@ -435,7 +445,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         properties props: UnsafePointer<NSLayoutManager.GlyphProperty>,
         characterIndexes charIndexes: UnsafePointer<Int>, font aFont: NSFont, forGlyphRange glyphRange: NSRange
     ) -> Int {
-        guard isReading, let storage = layoutManager.textStorage else { return 0 }
+        guard isReading || folding.hasFolds, let storage = layoutManager.textStorage else { return 0 }
         var changed = false
         var out = [NSLayoutManager.GlyphProperty](repeating: [], count: glyphRange.length)
         var glyphOut = [CGGlyph](UnsafeBufferPointer(start: glyphs, count: glyphRange.length))
@@ -448,6 +458,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         for i in 0..<glyphRange.length {
             out[i] = props[i]
             let at = charIndexes[i]
+            if folding.hasFolds, folding.isFolded(at) {
+                if !props[i].contains(.controlCharacter) { out[i] = .null; changed = true }
+                continue
+            }
+            guard isReading else { continue }
             // An image line drawn as its picture hides its source text.
             if let grids, storage.attribute(.qmImage, at: at, effectiveRange: nil) != nil, grids.renderedImage(at: at) != nil {
                 if !props[i].contains(.controlCharacter) { out[i] = .null; changed = true }
@@ -611,6 +626,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         changeInLength delta: Int
     ) {
         guard editedMask.contains(.editedCharacters) else { return }
+        folding.storageEdited(editedRange, delta: delta)
         if let earlier = pendingEdit {
             let start = min(earlier.location, editedRange.location)
             let earlierEnd = NSMaxRange(earlier) + (editedRange.location <= NSMaxRange(earlier) ? delta : 0)
@@ -634,6 +650,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
+        folding.selectionChanged()
         updateActiveLine()
         updateFocus()
         centerCaret()

@@ -56,6 +56,10 @@ struct SlashCommand {
                          action: #selector(MarkdownTextView.insertFootnote(_:))),
             SlashCommand(title: L("Today’s Date"), symbol: "calendar", keywords: ["today", "date", "now"],
                          action: #selector(MarkdownTextView.insertTodaysDate(_:))),
+            SlashCommand(title: L("Table of Contents"), symbol: "list.bullet.indent", keywords: ["table of contents", "toc", "contents", "outline"],
+                         action: #selector(MarkdownTextView.insertTableOfContents(_:))),
+            SlashCommand(title: L("Front Matter"), symbol: "doc.badge.gearshape", keywords: ["front matter", "yaml", "metadata", "properties"],
+                         action: #selector(MarkdownTextView.insertFrontMatter(_:))),
         ]
         return commands
     }()

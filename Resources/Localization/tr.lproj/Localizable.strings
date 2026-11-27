@@ -182,3 +182,36 @@
 "Clear Formatting" = "Biçimi Temizle";
 "Footnote" = "Dipnot";
 "Today’s Date" = "Bugünün Tarihi";
+
+/* Structure and editing */
+"Go to Heading…" = "Başlığa Git…";
+"Go to heading" = "Başlığa git";
+"Headings" = "Başlıklar";
+"Fold Section" = "Bölümü Daralt";
+"Unfold Section" = "Bölümü Genişlet";
+"Unfold All" = "Tümünü Genişlet";
+"Promote Heading" = "Başlık Düzeyini Yükselt";
+"Demote Heading" = "Başlık Düzeyini Düşür";
+"Move Line Up" = "Satırı Yukarı Taşı";
+"Move Line Down" = "Satırı Aşağı Taşı";
+"Delete Line" = "Satırı Sil";
+"Check Selected" = "Seçilenleri İşaretle";
+"Uncheck Selected" = "Seçilenlerin İşaretini Kaldır";
+"Highlight" = "Vurgula";
+"Add Row Above" = "Üste Satır Ekle";
+"Add Row Below" = "Alta Satır Ekle";
+"Add Column Before" = "Önce Sütun Ekle";
+"Add Column After" = "Sonra Sütun Ekle";
+"Delete Row" = "Satırı Sil";
+"Delete Column" = "Sütunu Sil";
+"Move Row Up" = "Satırı Yukarı Taşı";
+"Move Row Down" = "Satırı Aşağı Taşı";
+"Move Column Left" = "Sütunu Sola Taşı";
+"Move Column Right" = "Sütunu Sağa Taşı";
+"Align Column Left" = "Sütunu Sola Hizala";
+"Align Column Center" = "Sütunu Ortala";
+"Align Column Right" = "Sütunu Sağa Hizala";
+"Tidy Table" = "Tabloyu Düzenle";
+"Table of Contents" = "İçindekiler";
+"Front Matter" = "Ön Bilgi";
+"Copy Link to Heading" = "Başlığın Bağlantısını Kopyala";

@@ -13,6 +13,9 @@ final class MarkdownTextView: NSTextView {
     /// marker in one go.
     var concealsMarkup = false
 
+    /// Folded sections (View › Fold Section); set by the editor.
+    weak var folding: FoldController?
+
     /// Between shouldChangeText and didChangeText: the selection set
     /// there follows the edit and is left as it is.
     private var isEditingText = false
@@ -179,7 +182,7 @@ final class MarkdownTextView: NSTextView {
     }
 
     /// Is `location` inside fenced code? The styler marks those lines.
-    private func isInCodeBlock(_ location: Int) -> Bool {
+    func isInCodeBlock(_ location: Int) -> Bool {
         guard let storage = textStorage, storage.length > 0 else { return false }
         let line = (string as NSString).lineRange(for: NSRange(location: min(location, storage.length), length: 0))
         guard line.location < storage.length else { return false }
@@ -611,7 +614,7 @@ final class MarkdownTextView: NSTextView {
 
     // MARK: Insert
 
-    private func insertBlock(_ block: String, select: String? = nil) {
+    func insertBlock(_ block: String, select: String? = nil) {
         let ns = string as NSString
         let selection = selectedRange()
         let line = ns.lineRange(for: NSRange(location: selection.location, length: 0))
@@ -911,7 +914,7 @@ final class MarkdownTextView: NSTextView {
         }
     }
 
-    private var selectedLinesRange: NSRange {
+    var selectedLinesRange: NSRange {
         let ns = string as NSString
         var selection = selectedRange()
         // A selection ending at the start of a line doesn't include it.
@@ -922,7 +925,7 @@ final class MarkdownTextView: NSTextView {
         return ns.lineRange(for: selection)
     }
 
-    private func selectedLines() -> [String] {
+    func selectedLines() -> [String] {
         let text = (string as NSString).substring(with: selectedLinesRange)
         var lines = text.components(separatedBy: "\n")
         if text.hasSuffix("\n") { lines.removeLast() }
@@ -930,7 +933,7 @@ final class MarkdownTextView: NSTextView {
     }
 
     /// Rewrites each line the selection touches and selects the result.
-    private func transformLines(_ transform: (String) -> String) {
+    func transformLines(_ transform: (String) -> String) {
         let range = selectedLinesRange
         let original = (string as NSString).substring(with: range)
         let trailingNewline = original.hasSuffix("\n")

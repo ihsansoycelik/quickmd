@@ -26,6 +26,15 @@ Notable changes to QuickMD. The format follows [Keep a Changelog](https://keepac
 - Word count and reading time in the window's subtitle (View › Show Word Count).
 - View › Focus dims every paragraph but the current one; View › Typewriter keeps the caret's line in the middle of the window.
 - Format › Footnote, Today’s Date and Clear Formatting; Footnote and Today’s Date in the / menu too.
+- View › Go to Heading… (⌃⌘O): a small search over the note's headings; type to filter, ↑↓ and Return to jump.
+- View › Fold Section (⌥⌘←), Unfold Section (⌥⌘→) and Unfold All: a section's text hides under its heading behind a `…`, only on screen; the file never changes. Editing in it or moving the caret into it opens it again.
+- Format › Heading 5 and Heading 6 (⌥⌘5, ⌥⌘6), Promote Heading (⌃⌘↑) and Demote Heading (⌃⌘↓).
+- Format › Move Line Up and Down (⌥⌘↑, ⌥⌘↓; a list item moves with its nested items) and Delete Line (⇧⌘K), each one undo step.
+- Format › Check Selected and Uncheck Selected tick or clear every task in the selection.
+- Format › Table: add, delete and move rows and columns, align a column left, centre or right, and tidy the table.
+- Format › Highlight (⇧⌘H) toggles `==highlight==`.
+- Format › Table of Contents (linked, nested by level) and Front Matter (title and date, only if the note has none); both in the / menu too.
+- Edit › Copy Link to Heading copies `[Title](#anchor)` for the heading under the caret.
 
 ### Fixed
 
