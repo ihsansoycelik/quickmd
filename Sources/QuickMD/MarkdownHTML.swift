@@ -1133,15 +1133,17 @@ enum MarkdownHTML {
 
         let callouts = CalloutKind.allCases.map { ".callout-\($0.rawValue) { --c: \($0.css(for: theme)); }" }.joined(separator: " ")
 
+        let family = WritingFont.stored
+        let measure = Int(LineWidth.stored.measure(proportional: !family.isMonospacedBody))
         let designCSS = """
-        body { max-width: 64ch; font: \(size)px/\(Design.leading) \(Design.cssFamily); }
-        h1, h2, h3, h4, h5, h6 { color: \(primary); font-weight: 700; line-height: 1.4; margin: 1.6em 0 0.6em; }
+        body { max-width: \(measure)ch; font: \(size)px/\(Design.leading) \(family.cssBody); }
+        h1, h2, h3, h4, h5, h6 { color: \(primary); font-family: \(family.cssHeading); font-weight: 700; line-height: 1.4; margin: 1.6em 0 0.6em; }
         h1 { font-size: \(Design.headingScale[0])em; } h2 { font-size: \(Design.headingScale[1])em; } h3, h4, h5, h6 { font-size: 1em; }
         p, ul, ol, dl { margin: 0 0 1em; }
         strong { color: \(primary); font-weight: 600; }
         a { color: \(hex(p.link)); text-decoration: none; } a:hover { text-decoration: underline; }
         ul, ol { padding-left: 2ch; }
-        code { font: inherit; background: \(panel); padding: .05em .3em; border-radius: 3px; }
+        code { font: inherit; font-family: \(WritingFont.cssMono); background: \(panel); padding: .05em .3em; border-radius: 3px; }
         pre { font-size: \(Design.codeScale)em; }
         blockquote { margin: 0 0 1em; padding: 0 0 0 1.2em; border-left: 2px solid \(border); color: \(muted); }
         hr { border: 0; border-top: 1px solid \(border); margin: 2em 0; }

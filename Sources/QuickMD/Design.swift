@@ -20,10 +20,11 @@ enum AppResources {
     }
 }
 
-/// The one look of the app, after iA Writer: a single monospaced face,
-/// a ~64 character column centred in the window, generous leading,
-/// a blue caret, markdown's marks in quiet grey. No themes to pick
-/// beyond light and dark, no fonts to choose, nothing in the margins.
+/// The one look of the app, after iA Writer: a monospaced face by
+/// default, a ~64 character column centred in the window, generous
+/// leading, a blue caret, markdown's marks in quiet grey. The writing
+/// font, line width and page colour are the user's (`Typography`);
+/// nothing goes in the margins.
 enum Design {
     static let defaultSize: CGFloat = 16
     /// Characters per line before extra width becomes margin.
@@ -41,10 +42,12 @@ enum Design {
         .monospacedSystemFont(ofSize: size, weight: weight)
     }
 
-    /// Width of the text column in points at `size`.
-    static func columnWidth(size: CGFloat) -> CGFloat {
-        let advance = ("0" as NSString).size(withAttributes: [.font: font(size: size)]).width
-        return (advance * measure).rounded()
+    /// Width of the text column in points at `size`, for the chosen
+    /// writing font and line width (Settings › Appearance).
+    static func columnWidth(size: CGFloat, font family: WritingFont = .stored, width: LineWidth = .stored) -> CGFloat {
+        let body = family.body(size: size)
+        let advance = Typography.averageAdvance(body)
+        return (advance * width.measure(proportional: !family.isMonospacedBody)).rounded()
     }
 
     static let cssFamily = "ui-monospace, \"SF Mono\", Menlo, monospace"
@@ -82,19 +85,19 @@ struct Palette {
     /// Behind the current Find match.
     let findHighlight: NSColor
 
-    static func `for`(_ theme: Theme) -> Palette {
+    static func `for`(_ theme: Theme, light page: LightPage = .stored, dark darkPage: DarkPage = .stored) -> Palette {
         let blue = srgb(0x1AA9FF)
         switch theme {
         case .light:
             return Palette(
-                background: srgb(0xF8F7F4), text: srgb(0x2A2926), strong: srgb(0x12110F),
+                background: page.background, text: srgb(0x2A2926), strong: srgb(0x12110F),
                 syntax: srgb(0xA9A7A1), divider: srgb(0xDEDCD6), codeBackground: srgb(0x3A3426, 0.055),
-                link: srgb(0x0A6FC2), cursor: blue, selection: srgb(0xB3DDFB),
+                link: page == .grey ? srgb(0x0864B0) : srgb(0x0A6FC2), cursor: blue, selection: srgb(0xB3DDFB),
                 highlight: srgb(0xFFF1A8), findHighlight: srgb(0xFFD22E, 0.55)
             )
         case .dark:
             return Palette(
-                background: srgb(0x1A1918), text: srgb(0xD3D0CA), strong: srgb(0xF4F2EE),
+                background: darkPage.background, text: srgb(0xD3D0CA), strong: srgb(0xF4F2EE),
                 syntax: srgb(0x65625D), divider: srgb(0x36342F), codeBackground: srgb(0xFFF6E6, 0.06),
                 link: srgb(0x5CB8F5), cursor: blue, selection: srgb(0x1F4A6B),
                 highlight: srgb(0x5A4B12), findHighlight: srgb(0xFAC747, 0.42)

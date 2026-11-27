@@ -26,6 +26,11 @@ Notable changes to QuickMD. The format follows [Keep a Changelog](https://keepac
 - Word count and reading time in the window's subtitle (View › Show Word Count).
 - View › Focus dims every paragraph but the current one; View › Typewriter keeps the caret's line in the middle of the window.
 - Format › Footnote, Today’s Date and Clear Formatting; Footnote and Today’s Date in the / menu too.
+- Settings › Appearance: writing font (Mono, Duo, Sans, Serif; code stays monospaced), line width (Narrow, Normal, Wide) and page colour (Paper, White or Grey in light, Default or Black in dark). Export and print follow the font and width.
+- Settings › Writing: Focus on the paragraph or the sentence; fade the title bar and tabs while typing; smart quotes and dashes (off by default, never in code); book paragraphs (indented first lines, no gap between paragraphs, display only); reading speed.
+- View › Show Count As words, characters or lines; View › Writing Goal… sets a word target per note, kept on this Mac and not in the file, shown as “320 / 1,000 words”.
+- View › Show Writing Aids: dotted underlines for long sentences, repeated words, fillers and hedges (English and Turkish), -ly adverbs and possible passives (English). On-device, never saved; each aid can be turned off in Settings.
+- Settings is now four panes: Appearance, Writing, Writing Aids and General, with a short description under each switch.
 
 ### Fixed
 
