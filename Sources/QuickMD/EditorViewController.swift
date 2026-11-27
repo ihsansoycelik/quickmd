@@ -811,7 +811,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             layoutManager.calloutWash = theme == .dark ? 0.10 : 0.07
             layoutManager.tableBodyFont = font
         }
-        textView.font = font
+        // NSTextView.font sets the font of every character, so it would
+        // flatten headings to body size. Only set it when a full restyle
+        // follows, or when there is no text to flatten.
+        if styleChanged || textView.string.isEmpty { textView.font = font }
         // An empty note says where to start, and that `/` opens the blocks.
         // Secondary, but opaque enough to read: syntax grey is for
         // marks, not for the only sentence on an empty page.

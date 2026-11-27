@@ -402,3 +402,30 @@ struct ReadingLookTests {
         #expect(s.attribute(.qmSyntax, at: def.location, effectiveRange: nil) == nil)
     }
 }
+
+@MainActor
+struct HeadingSizeTests {
+    /// Regression: after the round-2 merge, headings in the editor came out at body size.
+    @Test func headingsAreLargerThanBodyInTheEditor() {
+        let controller = EditorViewController()
+        _ = controller.view
+        controller.isReading = false
+        let text = "# Project notes\n\n## Tasks\n\nBody line here.\n"
+        controller.load(text)
+        // Any settings broadcast (theme, a goal, Increase Contrast) re-applies
+        // the look without a style change; it must not flatten the fonts.
+        NotificationCenter.default.post(name: .editorSettingsChanged, object: nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let storage = controller.textView.textStorage!
+        let ns = text as NSString
+        func size(_ s: String) -> CGFloat {
+            let at = ns.range(of: s).location
+            return (storage.attribute(.font, at: at, effectiveRange: nil) as? NSFont)?.pointSize ?? 0
+        }
+        let body = size("Body line")
+        #expect(body > 0)
+        #expect(size("Project notes") > body, "h1 \(size("Project notes")) vs body \(body)")
+        #expect(size("Tasks") > body, "h2 \(size("Tasks")) vs body \(body)")
+        #expect(size("Project notes") > size("Tasks"))
+    }
+}
