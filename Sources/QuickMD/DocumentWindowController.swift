@@ -4,10 +4,13 @@ import WebKit
 
 /// One window per document holding the one view: a live-styled text
 /// view that reads like the page and edits like markdown, its marks
-/// showing only on the caret's line. No sidebar, no toolbar.
+/// showing only on the caret's line. No toolbar; the only side panel
+/// is the optional file sidebar (View › Show Sidebar), off by default,
+/// and the only bar is the optional formatting bar under the text.
 final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
     private let editor = EditorViewController()
     var editorForTests: EditorViewController { editor }
+    private lazy var split = SidebarSplitController(editor: editor)
     private var settingsObserver: Any?
     private var positionObservers: [Any] = []
     private var positionSave: Timer?
@@ -31,13 +34,19 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         window.delegate = self
         shouldCascadeWindows = true
         windowFrameAutosaveName = "QuickMDDocument"
-        window.contentViewController = editor
+        window.contentViewController = split
+        window.addTitlebarAccessoryViewController(split.titlebarAccessory)
+        window.initialFirstResponder = editor.textView
+        window.autorecalculatesKeyViewLoop = true
         if window.frame.width < 600 { window.setContentSize(NSSize(width: 860, height: 720)) }
         if !window.setFrameUsingName("QuickMDDocument") { window.center() }
 
         settingsObserver = NotificationCenter.default.addObserver(
             forName: .editorSettingsChanged, object: nil, queue: .main
-        ) { [weak self] _ in self?.applyTheme() }
+        ) { [weak self] _ in
+            self?.applyTheme()
+            self?.split.applySettings()
+        }
         // Quitting skips windowWillClose (sudden termination), so the
         // place is saved a moment after the caret or the view moves.
         let center = NotificationCenter.default
@@ -58,6 +67,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
         document.editor = editor
         editor.textView.baseURL = document.fileURL?.deletingLastPathComponent()
+        split.sidebar.documentURL = document.fileURL
         // A note an agent wrote a moment ago (opened right after it was
         // written) plays in from empty, as if it were still being typed.
         if Settings.liveWriting, let written = document.fileModificationDate, -written.timeIntervalSinceNow < 3 {
@@ -88,12 +98,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
-    /// View › Show Word Count: words and reading time as the window's
-    /// subtitle, for the selection when there is one.
+    /// View › Show Word Count: words and reading time, for the selection
+    /// when there is one. In the formatting bar when it's shown, else in
+    /// the window's subtitle; never both.
     private func updateCount() {
         guard let window else { return }
         guard Settings.showsWordCount else {
             if !window.subtitle.isEmpty { window.subtitle = "" }
+            editor.formattingBar.metaText = ""
             return
         }
         let text = editor.currentText
@@ -104,7 +116,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             let selected = Self.wordCount((text as NSString).substring(with: selection))
             if selected > 0 { words = selected }
         }
-        let subtitle = Self.countLine(words: words)
+        let line = Self.countLine(words: words)
+        let inBar = Settings.showsFormattingBar
+        editor.formattingBar.metaText = inBar ? line : ""
+        let subtitle = inBar ? "" : line
         if window.subtitle != subtitle { window.subtitle = subtitle }
     }
 
@@ -139,6 +154,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     override var document: AnyObject? {
         didSet {
             editor.textView.baseURL = markdownDocument?.fileURL?.deletingLastPathComponent()
+            split.sidebar.documentURL = markdownDocument?.fileURL
         }
     }
 
@@ -152,12 +168,13 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         super.synchronizeWindowTitleWithDocumentName()
         // A renamed or newly saved file moves the base for relative links.
         editor.textView.baseURL = markdownDocument?.fileURL?.deletingLastPathComponent()
+        split.sidebar.documentURL = markdownDocument?.fileURL
     }
 
     private func applyTheme() {
         let theme = Settings.theme
         window?.appearance = NSAppearance(named: theme.appearanceName)
-        window?.backgroundColor = Palette.for(theme).background
+        window?.backgroundColor = Palette.editorBackground(theme, paper: Settings.paperBackground)
         // Settings › Open documents in tabs should reach windows that
         // are already open, not just the next one.
         window?.tabbingMode = Settings.opensInTabs ? .preferred : .disallowed

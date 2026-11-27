@@ -35,6 +35,8 @@ enum Help {
     - View › Appearance picks light, dark or the system setting.
     - View › Bigger (⌘+ or ⌘=) and Smaller (⌘−) change the text size.
     - View › Word Count (⌥⌘I) shows words, characters and reading time, for the selection too.
+    - The bar under the text holds the common Format commands, the caret line's style and an Insert menu; View › Show Formatting Bar hides it.
+    - View › Paper (or Paper in the bar) gives the page a warm paper colour.
 
     ## Files
 
@@ -84,6 +86,8 @@ enum Help {
     - Görüntü › Görünüm açık, koyu ya da sistem ayarını seçer.
     - Görüntü › Büyüt (⌘+ ya da ⌘=) ve Küçült (⌘−) yazı boyutunu değiştirir.
     - Görüntü › Kelime Sayısı (⌥⌘I) kelime, karakter ve okuma süresini gösterir; seçim için de.
+    - Metnin altındaki çubukta sık kullanılan Biçim komutları, imleç satırının stili ve bir Ekle menüsü var; Görüntü › Biçim Çubuğunu Göster onu gizler.
+    - Görüntü › Kâğıt (ya da çubuktaki Kâğıt) sayfaya sıcak bir kâğıt rengi verir.
 
     ## Dosyalar
 

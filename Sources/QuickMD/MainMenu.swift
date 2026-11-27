@@ -205,14 +205,17 @@ enum MainMenu {
             themes.addItem(entry)
         }
         menu.addItem(submenu(themes))
+        menu.addItem(item("Paper", #selector(AppDelegate.togglePaper(_:)), target: app))
         menu.addItem(.separator())
         menu.addItem(item("Word Count", #selector(DocumentWindowController.showWordCount(_:)), "i", [.command, .option]))
         menu.addItem(item("Show Word Count", #selector(AppDelegate.toggleWordCount(_:)), target: app))
+        menu.addItem(item("Show Formatting Bar", #selector(AppDelegate.toggleFormattingBar(_:)), target: app))
         menu.addItem(.separator())
         menu.addItem(item("Show Markdown Syntax", #selector(AppDelegate.toggleMarkdownSyntax(_:)), target: app))
         menu.addItem(item("Focus", #selector(AppDelegate.toggleFocusMode(_:)), target: app))
         menu.addItem(item("Typewriter", #selector(AppDelegate.toggleTypewriterMode(_:)), target: app))
         menu.addItem(.separator())
+        menu.addItem(item("Show Sidebar", #selector(AppDelegate.toggleFileSidebar(_:)), "s", [.command, .control], target: app))
         menu.addItem(item("Show Tab Bar", #selector(NSWindow.toggleTabBar(_:))))
         menu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
         return menu

@@ -82,6 +82,13 @@ struct Palette {
     /// Behind the current Find match.
     let findHighlight: NSColor
 
+    /// The editor's ground: the plain background, or warm paper (View › Paper).
+    /// The exported page always keeps the plain one.
+    static func editorBackground(_ theme: Theme, paper: Bool) -> NSColor {
+        guard paper else { return Palette.for(theme).background }
+        return theme == .dark ? srgb(0x221E1A) : srgb(0xF5EFE3)
+    }
+
     static func `for`(_ theme: Theme) -> Palette {
         let blue = srgb(0x1AA9FF)
         switch theme {

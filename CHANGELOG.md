@@ -26,6 +26,9 @@ Notable changes to QuickMD. The format follows [Keep a Changelog](https://keepac
 - Word count and reading time in the window's subtitle (View › Show Word Count).
 - View › Focus dims every paragraph but the current one; View › Typewriter keeps the caret's line in the middle of the window.
 - Format › Footnote, Today’s Date and Clear Formatting; Footnote and Today’s Date in the / menu too.
+- An optional file sidebar (View › Show Sidebar, ⌃⌘S, or the title bar button), off by default: the notes in the document's folder as a tree, a filter field, the current note highlighted, a click to open, live updates as files change, and Open in New Window, Show in Finder and New Note Here on right-click.
+- A quiet formatting bar under the text: bold, italic, strikethrough, code, link, the block style of the caret's line, lists, quote, code block, table and an insert menu, with the word count and a Paper toggle. View › Show Formatting Bar hides it; while it's shown, the word count moves from the subtitle into the bar.
+- View › Paper gives the editor a warm paper background, in light and dark.
 
 ### Fixed
 

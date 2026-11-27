@@ -4,7 +4,10 @@ import AppKit
 /// column. Draws no background of its own; the window's shows through.
 final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextStorageDelegate, NSLayoutManagerDelegate {
     let textView: MarkdownTextView
+    /// View › Show Formatting Bar: under the text, across the window.
+    let formattingBar = FormattingBar()
     private let scrollView: NSScrollView
+    private var barConstraints: (shown: NSLayoutConstraint, hidden: NSLayoutConstraint)?
     private var pendingEdit: NSRange?
     private var settingsObserver: Any?
 
@@ -81,12 +84,20 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.textStorage?.delegate = self
 
         root.addSubview(scrollView)
+        formattingBar.textView = textView
+        formattingBar.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(formattingBar)
+        let shown = scrollView.bottomAnchor.constraint(equalTo: formattingBar.topAnchor)
+        let hidden = scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+        barConstraints = (shown, hidden)
         NSLayoutConstraint.activate([
             // Below the title bar, so text never scrolls under the title.
             scrollView.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            formattingBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            formattingBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            formattingBar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
         view = root
 
@@ -631,12 +642,23 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         focusedBlock = nil
         updateFocus()
         centerCaret()
+        updateFormattingBar()
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
         updateActiveLine()
         updateFocus()
         centerCaret()
+        updateFormattingBar()
+    }
+
+    /// The bar shows the block style of the caret's line.
+    private func updateFormattingBar() {
+        guard !formattingBar.isHidden else { return }
+        let ns = textView.string as NSString
+        let location = min(textView.selectedRange().location, ns.length)
+        let line = ns.substring(with: ns.lineRange(for: NSRange(location: location, length: 0)))
+        formattingBar.update(for: LineStyle.of(line.trimmingCharacters(in: .newlines)))
     }
 
     // MARK: Focus and Typewriter
@@ -775,6 +797,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let styleChanged = appliedStyle?.size != Settings.fontSize || appliedStyle?.theme != theme
         appliedStyle = (Settings.fontSize, theme)
         view.appearance = NSAppearance(named: theme.appearanceName)
+        let showsBar = Settings.showsFormattingBar
+        formattingBar.isHidden = !showsBar
+        barConstraints?.hidden.isActive = !showsBar
+        barConstraints?.shown.isActive = showsBar
+        formattingBar.apply(palette, theme: theme)
+        updateFormattingBar()
         textView.insertionPointColor = palette.cursor
         textView.selectedTextAttributes = [.backgroundColor: palette.selection]
         if let layoutManager = textView.layoutManager as? HorizontalRuleLayoutManager {

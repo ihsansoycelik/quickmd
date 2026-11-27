@@ -65,6 +65,18 @@ enum Settings {
         set { defaults.set(newValue, forKey: "ShowWordCount"); changed() }
     }
 
+    /// View › Show Formatting Bar: the bar of format buttons under the text.
+    static var showsFormattingBar: Bool {
+        get { defaults.object(forKey: "ShowFormattingBar") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "ShowFormattingBar"); changed() }
+    }
+
+    /// View › Paper: a warm paper colour behind the text instead of the plain ground.
+    static var paperBackground: Bool {
+        get { defaults.bool(forKey: "PaperBackground") }
+        set { defaults.set(newValue, forKey: "PaperBackground"); changed() }
+    }
+
     /// View › Focus: every paragraph but the caret's is dimmed.
     static var focusMode: Bool {
         get { defaults.bool(forKey: "FocusMode") }
@@ -75,6 +87,13 @@ enum Settings {
     static var typewriterMode: Bool {
         get { defaults.bool(forKey: "TypewriterMode") }
         set { defaults.set(newValue, forKey: "TypewriterMode"); changed() }
+    }
+
+    /// View › Show Sidebar: the notes in the document's folder, beside
+    /// the editor, in every window at once. Off by default.
+    static var showsSidebar: Bool {
+        get { defaults.bool(forKey: "ShowSidebar") }
+        set { defaults.set(newValue, forKey: "ShowSidebar"); changed() }
     }
 
     /// What File › New starts with.

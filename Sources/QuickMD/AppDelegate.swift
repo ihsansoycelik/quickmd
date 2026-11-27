@@ -158,18 +158,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func defaultTextSize(_ sender: Any?) { Settings.fontSize = Design.defaultSize }
 
     @objc func toggleWordCount(_ sender: Any?) { Settings.showsWordCount.toggle() }
+    @objc func toggleFormattingBar(_ sender: Any?) { Settings.showsFormattingBar.toggle() }
+    @objc func togglePaper(_ sender: Any?) { Settings.paperBackground.toggle() }
     @objc func toggleMarkdownSyntax(_ sender: Any?) { Settings.showsSyntax.toggle() }
     @objc func toggleFocusMode(_ sender: Any?) { Settings.focusMode.toggle() }
     @objc func toggleTypewriterMode(_ sender: Any?) { Settings.typewriterMode.toggle() }
+    @objc func toggleFileSidebar(_ sender: Any?) { Settings.showsSidebar.toggle() }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(chooseTheme(_:)):
             menuItem.state = Settings.themePreference.rawValue == menuItem.representedObject as? String ? .on : .off
         case #selector(toggleWordCount(_:)): menuItem.state = Settings.showsWordCount ? .on : .off
+        case #selector(toggleFormattingBar(_:)): menuItem.state = Settings.showsFormattingBar ? .on : .off
+        case #selector(togglePaper(_:)): menuItem.state = Settings.paperBackground ? .on : .off
         case #selector(toggleMarkdownSyntax(_:)): menuItem.state = Settings.showsSyntax ? .on : .off
         case #selector(toggleFocusMode(_:)): menuItem.state = Settings.focusMode ? .on : .off
         case #selector(toggleTypewriterMode(_:)): menuItem.state = Settings.typewriterMode ? .on : .off
+        case #selector(toggleFileSidebar(_:)): menuItem.title = Settings.showsSidebar ? L("Hide Sidebar") : L("Show Sidebar")
         default:
             break
         }

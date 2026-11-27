@@ -12,7 +12,7 @@ QuickMD is a native macOS Markdown editor in Swift and AppKit, built with SwiftP
 ## Rules
 
 - The file on disk is the source of truth and stays plain Markdown. Styling must never change the text that gets saved (line endings, BOM, encoding and padding included).
-- One view: no preview pane, sidebar or toolbar. New features fit into the editor, menus or settings.
+- One view: no preview pane or toolbar. The only side panel is the optional file sidebar (View › Show Sidebar), off by default; the only bar is the optional bottom formatting bar (View › Show Formatting Bar). New features fit into the editor, menus, settings or that bar.
 - Notes are untrusted input. Raw HTML is sanitised and scripts from a note never run; keep the Content-Security-Policy in `MarkdownHTML.swift` tight.
 - No network access from the app beyond what a note itself asks for (its links and https images in export and print).
 - Every user-facing string goes through `L("…")`. English text is the key; add its translation to `Resources/Localization/tr.lproj/Localizable.strings`.

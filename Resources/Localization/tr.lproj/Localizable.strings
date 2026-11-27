@@ -182,3 +182,29 @@
 "Clear Formatting" = "Biçimi Temizle";
 "Footnote" = "Dipnot";
 "Today’s Date" = "Bugünün Tarihi";
+"Show Formatting Bar" = "Biçim Çubuğunu Göster";
+"Formatting bar" = "Biçim çubuğu";
+"Paper" = "Kâğıt";
+"Paper background" = "Kâğıt arka plan";
+"Body" = "Gövde";
+"Text Style" = "Metin Stili";
+"Insert" = "Ekle";
+
+/* File sidebar */
+"Show Sidebar" = "Kenar Çubuğunu Göster";
+"Hide Sidebar" = "Kenar Çubuğunu Gizle";
+"Filter" = "Filtrele";
+"Filter notes" = "Notları filtrele";
+"Notes" = "Notlar";
+"Show in Finder" = "Finder'da Göster";
+"Open in New Window" = "Yeni Pencerede Aç";
+"New Note Here" = "Burada Yeni Not";
+"Allow Access…" = "Erişime İzin Ver…";
+"This note isn’t saved yet" = "Bu not henüz kaydedilmedi";
+"Save it to see the notes beside it." = "Yanındaki notları görmek için kaydet.";
+"QuickMD can’t see this folder" = "QuickMD bu klasörü göremiyor";
+"Allow access to list the notes in it." = "İçindeki notları listelemek için erişime izin ver.";
+"No notes match “%@”" = "“%@” ile eşleşen not yok";
+"Try another name." = "Başka bir ad dene.";
+"No notes in this folder" = "Bu klasörde not yok";
+"Notes saved here show up in this list." = "Buraya kaydedilen notlar bu listede görünür.";
