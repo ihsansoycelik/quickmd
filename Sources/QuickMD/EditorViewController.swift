@@ -9,6 +9,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     private var settingsObserver: Any?
     /// Folded sections, drawn as nothing.
     let folding = FoldController()
+    private var writingAids: WritingAidsPainter?
 
     /// While a live change plays in, the text it's heading for.
     var currentText: String { playback?.target ?? textView.string }
@@ -97,6 +98,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             forName: .editorSettingsChanged, object: nil, queue: .main
         ) { [weak self] _ in self?.applySettings() }
         applySettings()
+        writingAids = WritingAidsPainter(textView: textView)
     }
 
     override func viewDidLayout() {
@@ -654,6 +656,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         updateActiveLine()
         updateFocus()
         centerCaret()
+        Typography.updateSubstitutions(textView)
     }
 
     // MARK: Focus and Typewriter
@@ -696,7 +699,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             }
             return
         }
-        let block = Self.focusBlock(in: ns, at: textView.selectedRange().location)
+        var block = Self.focusBlock(in: ns, at: textView.selectedRange().location)
+        if Settings.focusScope == .sentence { block = Typography.sentence(in: ns, block: block, at: textView.selectedRange().location) }
         guard block != focusedBlock else { return }
         focusedBlock = block
         layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: all)
@@ -789,8 +793,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let theme = Settings.theme
         let palette = Palette.for(theme)
         let font = MarkdownStyler.bodyFont(size: Settings.fontSize)
-        let styleChanged = appliedStyle?.size != Settings.fontSize || appliedStyle?.theme != theme
-        appliedStyle = (Settings.fontSize, theme)
+        let look = TypographyLook.current
+        let styleChanged = appliedStyle?.size != Settings.fontSize || appliedStyle?.theme != theme || appliedStyle?.look != look
+        appliedStyle = (Settings.fontSize, theme, look)
+        Typography.updateSubstitutions(textView)
         view.appearance = NSAppearance(named: theme.appearanceName)
         textView.insertionPointColor = palette.cursor
         textView.selectedTextAttributes = [.backgroundColor: palette.selection]
@@ -829,8 +835,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// Show Markdown Syntax as last applied: only a change flips the mode.
     private var appliedShowsSyntax: Bool?
 
-    /// Size and theme, the only settings that change the text's attributes.
-    private var appliedStyle: (size: CGFloat, theme: Theme)?
+    /// Size, theme and look, the only settings that change the text's attributes.
+    private var appliedStyle: (size: CGFloat, theme: Theme, look: TypographyLook)?
 
     /// The text keeps to `Design.measure` characters; extra width
     /// becomes equal margins either side.

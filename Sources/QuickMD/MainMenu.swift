@@ -227,6 +227,9 @@ enum MainMenu {
         menu.addItem(item("Typewriter", #selector(AppDelegate.toggleTypewriterMode(_:)), target: app))
         menu.addItem(.separator())
         StructureMenus.view().forEach(menu.addItem)
+        menu.addItem(.separator())
+        WritingMenu.addItems(to: menu)  // Show Count As, Writing Goal…, Show Writing Aids
+        menu.addItem(.separator())
         menu.addItem(item("Show Tab Bar", #selector(NSWindow.toggleTabBar(_:))))
         menu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
         return menu

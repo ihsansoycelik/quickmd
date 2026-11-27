@@ -11,6 +11,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private var settingsObserver: Any?
     private var positionObservers: [Any] = []
     private var positionSave: Timer?
+    private var chromeFader: ChromeFader?
 
     private var markdownDocument: MarkdownDocument? { document as? MarkdownDocument }
 
@@ -56,6 +57,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             },
         ]
 
+        chromeFader = ChromeFader(window: window, textView: editor.textView)
         document.editor = editor
         editor.textView.baseURL = document.fileURL?.deletingLastPathComponent()
         // A note an agent wrote a moment ago (opened right after it was
@@ -99,12 +101,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         let text = editor.currentText
         let selection = editor.textView.selectedRange()
         // A selection with no words (a hidden marker, a space) counts the whole note.
-        var words = Self.wordCount(text)
+        var selected: String?
         if selection.length > 0, NSMaxRange(selection) <= (text as NSString).length {
-            let selected = Self.wordCount((text as NSString).substring(with: selection))
-            if selected > 0 { words = selected }
+            selected = (text as NSString).substring(with: selection)
         }
-        let subtitle = Self.countLine(words: words)
+        let subtitle = WritingStats.subtitle(
+            text: text, selection: selected, style: Settings.countStyle,
+            goal: writingGoal, wordsPerMinute: Settings.readingSpeed
+        )
         if window.subtitle != subtitle { window.subtitle = subtitle }
     }
 
@@ -238,7 +242,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         alert.messageText = String(format: L("%@ words"), Self.number(all.words))
         var lines = [
             String(format: L("%@ characters"), Self.number(all.characters)),
-            String(format: L("About %@ min to read"), Self.number(max(1, Int((Double(all.words) / 230).rounded(.up))))),
+            String(format: L("About %@ min to read"), Self.number(max(1, WritingStats.minutes(words: all.words, wordsPerMinute: Settings.readingSpeed)))),
         ]
         if selection.length > 0 {
             let part = Self.counts((text as NSString).substring(with: selection))
