@@ -26,6 +26,11 @@ Notable changes to QuickMD. The format follows [Keep a Changelog](https://keepac
 - Word count and reading time in the window's subtitle (View › Show Word Count).
 - View › Focus dims every paragraph but the current one; View › Typewriter keeps the caret's line in the middle of the window.
 - Format › Footnote, Today’s Date and Clear Formatting; Footnote and Today’s Date in the / menu too.
+- Edit › Copy As › Markdown, HTML (⌥⌘C), Rich Text (⌥⇧⌘C) and Plain Text, for the selection or the whole note. Rich text pastes formatted into Mail, Pages and Notes.
+- Edit › Paste as Markdown (⌥⌘V) turns copied HTML or rich text into Markdown; ⌘V does it too when the pasteboard has HTML but no plain text.
+- Cells copied from Numbers, Excel or Sheets paste as a Markdown table; Edit › Paste as Table does the same for CSV or TSV text.
+- File › Export as Word… (.docx) and Export as Rich Text… (.rtf). Images are left out (their alt text stays), so nothing is fetched.
+- Edit › Check Links… lists missing files and images, `#anchors` with no heading and footnotes with no definition, by line; clicking one selects it. Web links are only counted, never fetched.
 
 ### Fixed
 

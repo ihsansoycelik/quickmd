@@ -461,6 +461,8 @@ final class MarkdownTextView: NSTextView {
             pasteImage(image, over: selection)
             return
         }
+        // Spreadsheet cells as a table; HTML-only pasteboards as Markdown (Clipboard.swift).
+        if pasteConverted(from: board) { return }
         super.paste(sender)
     }
 
